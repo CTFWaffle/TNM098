@@ -64,7 +64,7 @@ def create_gaze_animation():
     )
     
     # To save the animation (uncomment):
-    # ani.save('gaze_animation.mp4', writer='ffmpeg', fps=20)
+    # ani.save('gaze_animation.gif', writer='pillow')
     
     plt.show()
     return ani
