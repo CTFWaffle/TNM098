@@ -19,12 +19,28 @@ xi, yi = np.mgrid[x.min():x.max():100j, y.min():y.max():100j]
 zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 
 # Plot the heatmap
-plt.figure(figsize=(10, 6))
-plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='hot')
-plt.colorbar(label='Density')
-plt.title('Eyetracking Heatmap')
-plt.xlabel('X position (pixels)')
-plt.ylabel('Y position (pixels)')
+# plt.figure(figsize=(10, 6))
+# plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='hot')
+# plt.invert_yaxis()
+# plt.colorbar(label='Density')
+# plt.title('Eyetracking Heatmap')
+# plt.xlabel('X position (pixels)')
+# plt.ylabel('Y position (pixels)')
+# plt.show()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+pcm = ax.pcolormesh(xi, yi, zi.reshape(xi.shape),
+                    shading='auto',
+                    cmap='hot')
+
+ax.invert_yaxis()          # ← works on every Matplotlib ≥ 2.x
+plt.colorbar(pcm, label='Density')
+
+ax.set(title='Eyetracking Heatmap',
+       xlabel='X position (pixels)',
+       ylabel='Y position (pixels)')
+
 plt.show()
 
 # Create animation of gaze movement
@@ -32,6 +48,7 @@ def create_gaze_animation():
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.set_xlim(eyetracking_data['GazePointX(px)'].min(), eyetracking_data['GazePointX(px)'].max())
     ax.set_ylim(eyetracking_data['GazePointY(px)'].min(), eyetracking_data['GazePointY(px)'].max())
+    ax.invert_yaxis()
     ax.set_xlabel('X position (pixels)')
     ax.set_ylabel('Y position (pixels)')
     ax.set_title('Gaze Point Movement Over Time')

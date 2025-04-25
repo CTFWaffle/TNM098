@@ -13,10 +13,15 @@ eyetracking_data['y'] = eyetracking_data['GazePointY(px)']
 kmeans = KMeans(n_clusters=6, random_state=0).fit(eyetracking_data[['x', 'y']])
 
 #scatter plot of x and y with Kmeans labels
-plt.scatter(eyetracking_data['x'], eyetracking_data['y'], c=kmeans.labels_, cmap='viridis', marker='o')
-plt.colorbar(label='Cluster Label')
-plt.xlabel('X Coordinate')
-plt.ylabel('Y Coordinate')
-plt.title('Scatter plot of Eye Tracking Data')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sc = ax.scatter(eyetracking_data['x'], eyetracking_data['y'], c=kmeans.labels_, cmap='viridis', marker='o')
+cbar = fig.colorbar(sc, ax=ax)      # ← PASS THE SCATTER, **not** the Axes
+cbar.set_label('Cluster label')
+#plt.colorbar(sc, label='Cluster Label')
+ax.invert_yaxis()
+ax.set_xlabel('X Coordinate')
+ax.set_ylabel('Y Coordinate')
+ax.set_title('Scatter plot of Eye Tracking Data')
 plt.show()
 
