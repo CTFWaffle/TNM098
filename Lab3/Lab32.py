@@ -126,3 +126,41 @@ print("\nTopic Labels:")
 for idx, label in enumerate(topic_labels):
     print(f"Topic {idx}: {label}")
 
+# Filter the TF-IDF matrix to match the filtered_wowie DataFrame
+filtered_tfidf_matrix = tfidf_matrix[filtered_wowie.index, :]
+
+# Analyze temporal distributions of topics
+topic_assignments = lda.transform(filtered_tfidf_matrix).argmax(axis=1)  # Assign each document to its most probable topic
+filtered_wowie['Topic'] = topic_assignments  # Add topic assignments to the filtered dataset
+
+# Plot temporal distributions for each topic
+plt.figure(figsize=(10, 6))
+for topic_idx in range(n_topics):
+    topic_docs = filtered_wowie[filtered_wowie['Topic'] == topic_idx]
+    plt.hist(topic_docs['Date'], bins=40, alpha=0.6, label=f"Topic {topic_idx}: {topic_labels[topic_idx]}")
+
+plt.title('Temporal Distributions of Topics')
+plt.xlabel('Date')
+plt.ylabel('Frequency')
+plt.legend()
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+# Adjust the number of topics
+n_topics = 7  # Change the number of topics to refine the model
+lda = LDA(n_components=n_topics, random_state=42)
+lda.fit(tfidf_matrix)
+
+# Add new keywords to the filtering process
+additional_keywords = ["incident", "conflict", "war", "riot", "protest", "crime"]
+keywords.extend(additional_keywords)
+filtered_wowie['Content'] = filtered_wowie['Content'].apply(lambda x: ' '.join([word for word in x.split() if word in keywords]))
+
+# Display individual reports for a specific topic
+selected_topic = 0  # Change this to the topic index you want to explore
+topic_docs = filtered_wowie[filtered_wowie['Topic'] == selected_topic]
+
+print(f"Documents for Topic {selected_topic}: {topic_labels[selected_topic]}")
+for idx, row in topic_docs.iterrows():
+    print(f"Date: {row['Date']}, Content: {row['Content']}")
