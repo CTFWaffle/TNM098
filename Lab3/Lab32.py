@@ -5,6 +5,8 @@ import seaborn as sns
 import nltk
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation as LDA
+
 
 # Relative path to the CSV file
 wowie = pd.read_csv(r'Lab3\Lab3.2\TNM098-MC3-2011.csv', sep=';')
@@ -19,6 +21,9 @@ wowie['Content'] = wowie['Content'].str.split()
 stop_words = set(stopwords.words('english'))
 wowie['Content'] = wowie['Content'].apply(lambda x: ' '.join([word for word in x if word not in stop_words]))
 
+# Sort the data by date
+wowie['Date'] = pd.to_datetime(wowie['Date'], format='%Y-%m-%d')
+wowie = wowie.sort_values(by='Date')
 
 # Histogram of the temporal data
 plt.figure(figsize=(10, 6))
@@ -35,8 +40,8 @@ vectorizer = TfidfVectorizer()
 tfidf_matrix = vectorizer.fit_transform(wowie['Content'])
 tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=vectorizer.get_feature_names_out())
 
-print(tfidf_df.head())
-print(wowie['Content'].head())
+#print(tfidf_df.head())
+#print(wowie['Content'].head())
 
 # Plotting the TF-IDF matrix
 '''plt.figure(figsize=(10, 6))
@@ -52,7 +57,7 @@ plt.show()'''
 
 # Select top n terms based on their average TF-IDF scores
 n_terms = 50  # Number of terms to display
-n_docs = 50   # Number of documents to display
+n_docs = 20   # Number of documents to display (Max 58)
 
 # Calculate the average TF-IDF score for each term
 term_scores = tfidf_matrix.mean(axis=0).A1
@@ -76,3 +81,29 @@ plt.xticks(ticks=np.arange(len(reduced_terms)), labels=reduced_terms, rotation=9
 plt.yticks(ticks=np.arange(len(subset_docs)), labels=subset_docs)
 plt.tight_layout()
 plt.show()
+
+# Build topic model (LDA)
+n_topics = 5  # Number of topics
+lda = LDA(n_components=n_topics, random_state=42)
+lda.fit(tfidf_matrix)
+
+# Display topic related words
+for topic_idx, topic in enumerate(lda.components_):
+    print(f"Topic {topic_idx}:")
+    top_feature_indices = topic.argsort()[-10:][::-1]  # Top 10 words for each topic
+    top_features = vectorizer.get_feature_names_out()[top_feature_indices]
+    print(" ".join(top_features))
+    print()
+
+# Generate topic labels based on the top terms for each topic
+topic_labels = []
+for topic_idx, topic in enumerate(lda.components_):
+    top_feature_indices = topic.argsort()[-5:][::-1]  # Top 5 words for each topic
+    top_features = vectorizer.get_feature_names_out()[top_feature_indices]
+    topic_labels.append(", ".join(top_features))  # Combine top terms into a single label
+
+# Console log the topic labels
+print("\nTopic Labels:")
+for idx, label in enumerate(topic_labels):
+    print(f"Topic {idx}: {label}")
+
