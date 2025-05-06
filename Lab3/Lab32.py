@@ -9,20 +9,41 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 # Relative path to the CSV file
 wowie = pd.read_csv(r'Lab3\Lab3.2\TNM098-MC3-2011.csv', sep=';')
 
-
 # Renmove punctuation, convert to lowercase remove stop words
 wowie['Content'] = wowie['Content'].str.replace(r'[^\w\s]', '', regex=True).str.lower()
 wowie['Content'] = wowie['Content'].str.split()
 
 # Tokenize the text using NLTK and remove stop words
-# nltk.download('stopwords')  # Uncomment this line if stopwords are not downloaded
+#nltk.download('stopwords')  # Uncomment this line if stopwords are not downloaded
 stop_words = set(stopwords.words('english'))
 wowie['Content'] = wowie['Content'].apply(lambda x: ' '.join([word for word in x if word not in stop_words]))
 
+#Filter the data to only include relevant keywords
+keywords = ["threat", "terrorism", "terrorist", "attack", "bomb", "explosion", "shooting", "violence", "dead", "injured", 
+            "casualties", "victims", "injury", "wounded", "assault", "hostage", "kidnapping", "explosive", "gunfire", "gunman", "militant"]
+
+# First create a copy of the dataframe
+filtered_wowie = wowie.copy()
+
+# Create a mask that identifies rows containing at least one keyword
+mask = filtered_wowie['Content'].apply(lambda x: any(keyword in x.split() for keyword in keywords))
+
+# Apply the mask to keep only rows with at least one keyword
+filtered_wowie = filtered_wowie[mask]
+
+# Then still filter the content to only contain keywords
+filtered_wowie['Content'] = filtered_wowie['Content'].apply(lambda x: ' '.join([word for word in x.split() if word in keywords]))
+
+# Sort data by date
+filtered_wowie['Date'] = pd.to_datetime(filtered_wowie['Date'], format='%Y-%m-%d')
+wowie['Date'] = pd.to_datetime(wowie['Date'], format='%Y-%m-%d')
 
 # Histogram of the temporal data
 plt.figure(figsize=(10, 6))
-plt.hist(wowie['Date'], bins=30, color='blue', alpha=0.7)
+# Plot with the same bins and no normalization
+plt.hist(wowie['Date'], bins=40, color='blue', alpha=0.7)
+plt.hist(filtered_wowie['Date'], bins=40, color='red', alpha=0.7)
+plt.legend(['Original Data', 'Filtered Data'])
 plt.title('Histogram of Temporal Data')
 plt.xlabel('Date')
 plt.ylabel('Frequency')
@@ -72,7 +93,7 @@ plt.title('Reduced TF-IDF Matrix Heatmap')
 plt.colorbar(label='TF-IDF Value')
 plt.xlabel('Top Terms')
 plt.ylabel('Documents')
-plt.xticks(ticks=np.arange(len(reduced_terms)), labels=reduced_terms, rotation=90)
-plt.yticks(ticks=np.arange(len(subset_docs)), labels=subset_docs)
+plt.xticks(ticks=np.arange(len(reduced_terms)), labels=reduced_terms, rotation=90, fontsize=6)
+plt.yticks(ticks=np.arange(len(subset_docs)), labels=subset_docs, fontsize=6)
 plt.tight_layout()
 plt.show()
