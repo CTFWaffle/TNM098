@@ -164,3 +164,24 @@ topic_docs = filtered_wowie[filtered_wowie['Topic'] == selected_topic]
 print(f"Documents for Topic {selected_topic}: {topic_labels[selected_topic]}")
 for idx, row in topic_docs.iterrows():
     print(f"Date: {row['Date']}, Content: {row['Content']}")
+
+#Task 7 
+
+# Histogram of the temporal data
+plt.figure(figsize=(10, 6))
+# Plot with the same bins and no normalization
+plt.hist(wowie['Date'], bins=40, color='blue', alpha=0.7)
+plt.hist(filtered_wowie['Date'], bins=40, color='red', alpha=0.7)
+plt.hist(topic_docs['Date'], bins=40, color='green', alpha=0.7)
+plt.legend(['Original Data', 'Filtered Data', 'Topic Data' + str(selected_topic)])
+plt.title('Histogram of Temporal Data')
+plt.xlabel('Date')
+plt.ylabel('Frequency')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+# Task 8
+
+
+# Task 9
