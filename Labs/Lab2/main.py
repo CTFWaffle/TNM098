@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 from sklearn.cluster import KMeans
 
 # Read Eyetracking data
-eyetracking_data = pd.read_csv('EyeTrack-raw.tsv', sep='\t')
+eyetracking_data = pd.read_csv('Labs/Lab2/EyeTrack-raw.tsv', sep='\t')
 eyetracking_data['x'] = eyetracking_data['GazePointX(px)']
 eyetracking_data['y'] = eyetracking_data['GazePointY(px)']
 

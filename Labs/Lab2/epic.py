@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 from matplotlib.collections import LineCollection
 
 # Read Eyetracking data
-eyetracking_data = pd.read_table('EyeTrack-raw.tsv')
+eyetracking_data = pd.read_table('Labs/Lab2/EyeTrack-raw.tsv')
 print(eyetracking_data.head())
 
 # Create a KDE-based heatmap
@@ -72,7 +72,7 @@ def create_gaze_animation():
     ]
     
     # Add the legend to the axis
-    ax.legend(handles=legend_elements, loc='lower right')
+    ax.legend(handles=legend_elements, loc='upper right')
     
     def init():
         line.set_segments([])

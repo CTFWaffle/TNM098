@@ -6,9 +6,17 @@ import seaborn as sns
 # Load in all images from the folder 'images', store them in a list called 'images'
 images = []
 for i in range(1, 13):
-    img_path = f'Lab3/images/{i:02d}.jpg'
+    img_path = f'Labs/Lab3/images/{i:02d}.jpg'
     img = mpimg.imread(img_path)
     images.append(img)
+
+# Display the images in a grid
+fig, axes = plt.subplots(3, 4, figsize=(12, 8))
+for ax, img in zip(axes.flatten(), images):
+    ax.imshow(img)
+    ax.axis('off')
+plt.tight_layout()
+plt.show()
 
 # Feature extraction functions
 def toGray(image):

@@ -9,7 +9,7 @@ from sklearn.decomposition import LatentDirichletAllocation as LDA
 
 
 # Relative path to the CSV file
-wowie = pd.read_csv(r'Lab3\Lab3.2\TNM098-MC3-2011.csv', sep=';')
+wowie = pd.read_csv(r'Labs\Lab3\Lab3.2\TNM098-MC3-2011.csv', sep=';')
 
 # Renmove punctuation, convert to lowercase remove stop words
 wowie['Content'] = wowie['Content'].str.replace(r'[^\w\s]', '', regex=True).str.lower()

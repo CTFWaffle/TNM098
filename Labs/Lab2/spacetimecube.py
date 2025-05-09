@@ -5,7 +5,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
 
 # Read Eyetracking data
-eyetracking_data = pd.read_table('EyeTrack-raw.tsv')
+eyetracking_data = pd.read_table('Labs/Lab2/EyeTrack-raw.tsv')
 
 # Konvertera timestamp till sekunder
 eyetracking_data['Time (s)'] = eyetracking_data['RecordingTimestamp'] / 1e6
