@@ -173,7 +173,7 @@ plt.figure(figsize=(10, 6))
 plt.hist(wowie['Date'], bins=40, color='blue', alpha=0.7)
 plt.hist(filtered_wowie['Date'], bins=40, color='red', alpha=0.7)
 plt.hist(topic_docs['Date'], bins=40, color='green', alpha=0.7)
-plt.legend(['Original Data', 'Filtered Data', 'Topic Data' + str(selected_topic)])
+plt.legend(['Original Data', 'Filtered Data', 'Topic Data ' + str(selected_topic)])
 plt.title('Histogram of Temporal Data')
 plt.xlabel('Date')
 plt.ylabel('Frequency')
@@ -184,4 +184,3 @@ plt.show()
 # Task 8
 # Some additional keywords to filter the data have been added
 
-# Task 9
