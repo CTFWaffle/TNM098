@@ -158,7 +158,7 @@ keywords.extend(additional_keywords)
 filtered_wowie['Content'] = filtered_wowie['Content'].apply(lambda x: ' '.join([word for word in x.split() if word in keywords]))
 
 # Display individual reports for a specific topic
-selected_topic = 0  # Change this to the topic index you want to explore
+selected_topic = 2  # Change this to the topic index you want to explore
 topic_docs = filtered_wowie[filtered_wowie['Topic'] == selected_topic]
 
 print(f"Documents for Topic {selected_topic}: {topic_labels[selected_topic]}")
@@ -182,6 +182,6 @@ plt.tight_layout()
 plt.show()
 
 # Task 8
-
+# Some additional keywords to filter the data have been added
 
 # Task 9
