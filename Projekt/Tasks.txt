@@ -1,0 +1,12 @@
+Using just the credit and loyalty card data, identify the most popular locations, and when they are popular.
+What anomalies do you see? What corrections would you recommend to correct these anomalies?
+
+Add the vehicle data to your analysis of the credit and loyalty card data. How does your assessment of the anomalies in question 1 change based on this new data? 
+What discrepancies between vehicle, credit, and loyalty card data do you find?
+
+Can you infer the owners of each credit card and loyalty card? What is your evidence? Where are there uncertainties in your method? 
+Where are there uncertainties in the data?
+
+Given the data sources provided, identify potential informal or unofficial relationships among GASTech personnel. Provide evidence for these relationships.
+
+Do you see evidence of suspicious activity? Identify 1- 10 locations where you believe the suspicious activity is occurring, and why
