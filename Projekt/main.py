@@ -1,6 +1,5 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.image import imread
 import numpy as np
 from pyproj import CRS
 from pykml import parser
@@ -98,7 +97,7 @@ def match_timestamps_with_places(data1, data2, places):
 matched_cc_data = match_timestamps_with_places(credit_card_data, gps_data, places)
 
 # Read in the image and display it
-tourist_image = imread(r'Projekt\data\MC2\MC2-tourist.jpg')
+tourist_image = plt.imread(r'Projekt\data\MC2\MC2-tourist.jpg')
 
 # Extract coordinates from matched_cc_data
 

@@ -4,9 +4,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pyproj import CRS
 from pykml import parser
+from matplotlib.colors import Normalize
+from matplotlib import colormaps  # Use the updated colormap API
 
-# Load cc_data
 cc_data = pd.read_csv(r'Projekt\data\MC2\cc_data.csv', encoding='cp1252')
+gps_data = pd.read_csv(r'Projekt\data\MC2\gps.csv', encoding='cp1252')
+loyalty_data = pd.read_csv(r'Projekt\data\MC2\loyalty_data.csv', encoding='cp1252')
+car_data = pd.read_csv(r'Projekt\data\MC2\car-assignments.csv', encoding='cp1252')
 
 # Load the .prj file (projection information)
 with open(r'Projekt\data\MC2\Geospatial\Abila.prj', 'r') as prj_file:
@@ -21,11 +25,7 @@ kml_file = r'Projekt\data\MC2\Geospatial\Abila.kml'
 # Read the KML file using pykml
 with open(kml_file, 'r', encoding="cp1252") as f:
    root = parser.parse(f).getroot()
-'''   
-# Debugging: Print the structure of each Placemark
-for place in root.Document.Folder.Placemark:
-    print(etree.tostring(place, pretty_print=True).decode())
-'''
+   
 # Define the KML namespace
 namespace = {'kml': 'http://www.opengis.net/kml/2.2'}
 
@@ -47,8 +47,7 @@ for place in root.Document.Folder.Placemark:
         if coords is not None:
             data["Coordinates"] = coords.text.strip()
             places.append(data)
-'''else:
-        print(f"Skipping Placemark without LineString: {place.name if hasattr(place, 'name') else 'Unnamed'}")'''
+
 
 df = pd.DataFrame(places)
 
@@ -79,45 +78,59 @@ gdf = gdf.to_crs(epsg=4326)
 # Get the bounding box of the data
 minx, miny, maxx, maxy = gdf.total_bounds
 
-# Plot geometry data onto MC2 map (MC2-tourist.jpg)
+# Plot the base map with all geospatial data
 img = plt.imread(r'Projekt\data\MC2\MC2-tourist.jpg')
-fig, ax = plt.subplots(figsize=(10, 10))
 
-# Use the bounding box of the data as the extent for the image
-ax.imshow(img, extent=[minx, maxx, miny, maxy])
+# Plot GPS data over the map
+def plot_gps_data_with_base_map(gps_data, base_map_img, gdf_base):
+    # Create a GeoDataFrame from the GPS data
+    gdf_gps = gpd.GeoDataFrame(gps_data, geometry=gpd.points_from_xy(gps_data['long'], gps_data['lat']))
 
-# Plot the geospatial data
-gdf.plot(ax=ax, color='red', alpha=0.5, edgecolor='k')
+    # Create subset of GPS data for a specific id
+    gps_data_subset = gdf_gps[gdf_gps['id'] == 1].copy()  # Create a copy to avoid the warning
+    
+    # Ensure the 'Timestamp' column is in datetime format
+    gps_data_subset['Timestamp'] = pd.to_datetime(gps_data_subset['Timestamp'])
+    
+    # Set the coordinate reference system (CRS) to WGS84
+    gps_data_subset.crs = "EPSG:4326"
+    
+    # Get the bounding box of the base map
+    minx, miny, maxx, maxy = gdf_base.total_bounds
 
-plt.title('Geospatial Data from KML')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.grid()
-plt.show()
+    # Normalize the data for color interpolation based on the 'Timestamp' column
+    norm = Normalize(vmin=gps_data_subset['Timestamp'].min().timestamp(), 
+                     vmax=gps_data_subset['Timestamp'].max().timestamp())
+    cmap = colormaps['viridis']  # Updated colormap API
 
-print(gdf['name'][1])
-
-# Filter the GeoDataFrame for a specific person by name
-person_name = "Skaldis"  # Replace with the actual name
-person_gdf = gdf[gdf['name'] == person_name]
-
-# Check if the person exists in the data
-if not person_gdf.empty:
-    # Plot the base map with all geospatial data
-    img = plt.imread(r'Projekt\data\MC2\MC2-tourist.jpg')
+    # Plot the base map with geospatial data and GPS data
     fig, ax = plt.subplots(figsize=(10, 10))
-    ax.imshow(img, extent=[minx, maxx, miny, maxy])
-    gdf.plot(ax=ax, color='red', alpha=0.5, edgecolor='k', label='All Data')
+    ax.imshow(base_map_img, extent=[minx, maxx, miny, maxy])
+    gdf_base.plot(ax=ax, color='red', alpha=0.5, edgecolor='k', label='All Streets')
 
-    # Overlay the specific person's geo-data
-    person_gdf.plot(ax=ax, color='blue', alpha=0.7, edgecolor='black', label=f'{person_name}')
+    # Plot GPS data with interpolated colors based on the 'Timestamp' column
+    for _, row in gps_data_subset.iterrows():
+        color = cmap(norm(row['Timestamp'].timestamp()))  # Interpolate color based on timestamp
+        ax.plot(row.geometry.x, row.geometry.y, marker='o', color=color, markersize=5, alpha=0.1) 
+
+    # Add a color bar to explain the interpolation
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # Required for ScalarMappable
+    cbar = plt.colorbar(sm, ax=ax, orientation='vertical', fraction=0.03, pad=0.04)
+    cbar.ax.set_yticks([])  # Remove numeric ticks from the color bar
+    cbar.set_label('Interpolation', rotation=270, labelpad=15)
+
+    # Annotate the color bar with "Start" and "End"
+    cbar.ax.text(1.5, 0, 'Start', ha='center', va='center', transform=cbar.ax.transAxes)
+    cbar.ax.text(1.5, 1, 'End', ha='center', va='center', transform=cbar.ax.transAxes)
 
     # Add title, labels, and legend
-    plt.title('Geospatial Data with Highlighted Person')
-    plt.xlabel('Longitude')
-    plt.ylabel('Latitude')
-    plt.legend()
+    ax.set_title('Combined Geospatial and GPS Data Plot with Interpolated Colors')
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
     plt.grid()
     plt.show()
-else:
-    print(f"No geo-data found for {person_name}")
+
+
+# Call the new function with the required data
+plot_gps_data_with_base_map(gps_data, img, gdf)
