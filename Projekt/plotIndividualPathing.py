@@ -12,7 +12,7 @@ cc_data = pd.read_csv(r'Projekt\data\MC2\cc_data.csv', encoding='cp1252')
 gps_data = pd.read_csv(r'Projekt\data\MC2\gps.csv', encoding='cp1252')
 loyalty_data = pd.read_csv(r'Projekt\data\MC2\loyalty_data.csv', encoding='cp1252')
 car_data = pd.read_csv(r'Projekt\data\MC2\car-assignments.csv', encoding='cp1252')
-
+gps_data = gps_data[gps_data['id'] <= 35]
 # Load the .prj file (projection information)
 with open(r'Projekt\data\MC2\Geospatial\Abila.prj', 'r') as prj_file:
     prj_content = prj_file.read()
@@ -88,7 +88,7 @@ def plot_gps_data_with_base_map(gps_data, base_map_img, gdf_base):
     gdf_gps = gpd.GeoDataFrame(gps_data, geometry=gpd.points_from_xy(gps_data['long'], gps_data['lat']))
 
     # Create subset of GPS data for a specific id
-    gps_data_subset = gdf_gps[gdf_gps['id'] == 1].copy()  # Create a copy to avoid the warning
+    gps_data_subset = gdf_gps[gdf_gps['id'] == 35].copy()  # Create a copy to avoid the warning
     
     # Ensure the 'Timestamp' column is in datetime format
     gps_data_subset['Timestamp'] = pd.to_datetime(gps_data_subset['Timestamp'])
@@ -192,7 +192,7 @@ def animate_gps_data_with_base_map(gps_data, base_map_img, gdf_base, subset_id=1
     plt.show()
 
 # Call the new function with the required data
-#plot_gps_data_with_base_map(gps_data, img, gdf)
+plot_gps_data_with_base_map(gps_data, img, gdf)
 
 # Call the animation function
-animate_gps_data_with_base_map(gps_data, img, gdf, distance_threshold=0.0005)
+#animate_gps_data_with_base_map(gps_data, img, gdf, distance_threshold=0.0005)
