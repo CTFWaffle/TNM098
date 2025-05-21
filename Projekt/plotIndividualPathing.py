@@ -314,10 +314,236 @@ def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_stree
         
         plt.show()
 
-# Save the "all streets" plot
-all_streets_img_path = r'Projekt\data\MC2\all_streets.png'
-save_all_streets_plot(gdf, img, all_streets_img_path)
+def plot_shared_locations(gdf_gps, time_window='1min', location_precision=5, max_per_plot=20, grid_size=(4, 4)):
+    """
+    Find and plot locations where multiple IDs were at the same place and time.
+    
+    Parameters:
+    -----------
+    gdf_gps: GeoDataFrame
+        The GPS dataset with id and location information
+    time_window: str
+        Time window for grouping (e.g., '1min', '5min')
+    location_precision: int
+        Decimal places to round coordinates for proximity grouping
+    max_per_plot: int
+        Maximum number of shared locations to show per plot
+    grid_size: tuple
+        Number of plots in grid (rows, columns)
+    
+    Returns:
+    --------
+    list: Any remaining shared locations not plotted
+    """
+    # Ensure Timestamp is datetime
+    if not pd.api.types.is_datetime64_any_dtype(gdf_gps['Timestamp']):
+        gdf_gps['Timestamp'] = pd.to_datetime(gdf_gps['Timestamp'])
 
-# Call the function to plot GPS data by day with car_id parameter
-plot_gps_data_by_day(gdf_gps, img, gdf, car_id=5, all_streets_img_path=all_streets_img_path, 
-                     movement_threshold=0.00002, max_days=2)
+    # Round coordinates and time
+    gdf_gps['rounded_x'] = gdf_gps.geometry.x.round(location_precision)
+    gdf_gps['rounded_y'] = gdf_gps.geometry.y.round(location_precision)
+    gdf_gps['rounded_time'] = gdf_gps['Timestamp'].dt.round(time_window)
+    gdf_gps['date'] = gdf_gps['Timestamp'].dt.date
+
+    # Group by date, rounded location, and rounded time
+    grouped = gdf_gps.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time'])
+
+    # Find groups with more than one unique id
+    shared = grouped.filter(lambda x: x['id'].nunique() > 1)
+
+    if shared.empty:
+        print("No shared locations found.")
+        return []
+
+    # Get unique shared location groups
+    unique_shared = []
+    for _, group in shared.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time']):
+        unique_shared.append({
+            'x': group['rounded_x'].iloc[0],
+            'y': group['rounded_y'].iloc[0],
+            'ids': sorted(group['id'].unique()),
+            'time': group['rounded_time'].iloc[0],
+            'date': group['date'].iloc[0],
+            'group': group
+        })
+    
+    # Calculate how many plots we need
+    rows, cols = grid_size
+    max_plots = rows * cols
+    plots_needed = (len(unique_shared) + max_per_plot - 1) // max_per_plot
+    
+    if plots_needed == 0:
+        return []
+    
+    # Limit plots to the maximum grid size
+    plots_to_create = min(plots_needed, max_plots)
+    
+    # Create figure with grid of subplots
+    if plots_to_create > 1:
+        fig, axes = plt.subplots(rows, cols, figsize=(cols*5, rows*5), squeeze=False)
+        axes = axes.flatten()
+        # Hide unused subplots
+        for i in range(plots_to_create, len(axes)):
+            axes[i].axis('off')
+    else:
+        fig, ax = plt.subplots(figsize=(12, 10))
+        axes = [ax]
+    
+    # Get bounding box for consistent display
+    minx, miny, maxx, maxy = gdf.total_bounds
+    
+    # Plot shared locations in batches
+    remaining = []
+    total_plotted = 0
+    
+    for plot_idx in range(plots_to_create):
+        if total_plotted >= len(unique_shared):
+            break
+            
+        ax = axes[plot_idx]
+        
+        # Calculate batch for this plot
+        start_idx = plot_idx * max_per_plot
+        end_idx = min(start_idx + max_per_plot, len(unique_shared))
+        batch = unique_shared[start_idx:end_idx]
+        
+        # Setup the plot
+        ax.imshow(img, extent=[minx, maxx, miny, maxy])
+        gdf.plot(ax=ax, color='red', alpha=0.3, edgecolor='k')
+        
+        # Plot each shared location in this batch
+        for item in batch:
+            ax.plot(item['x'], item['y'], marker='o', color='orange', markersize=10)
+            ids_str = ', '.join(map(str, item['ids']))
+            time_str = item['time'].strftime('%Y-%m-%d %H:%M')
+            ax.annotate(f"{time_str}\nIDs: {ids_str}", 
+                       (item['x'], item['y']), 
+                       textcoords="offset points", 
+                       xytext=(5,5),
+                       bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", alpha=0.7),
+                       fontsize=8)
+        
+        ax.set_title(f"Shared Locations (Batch {plot_idx+1} of {plots_to_create})")
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        
+        total_plotted += len(batch)
+    
+    # Store any remaining items
+    if len(unique_shared) > total_plotted:
+        remaining = unique_shared[total_plotted:]
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # Return remaining occurrences
+    return remaining
+
+# Find shared locations without plotting
+def find_shared_locations(gdf_gps, time_window='1min', location_precision=5, min_ids=2):
+    """
+    Find locations where multiple IDs were at the same place and time.
+    
+    Parameters:
+    -----------
+    gdf_gps: GeoDataFrame
+        The GPS dataset with id and location information
+    time_window: str
+        Time window for grouping (e.g., '1min', '5min')
+    location_precision: int
+        Decimal places to round coordinates for proximity grouping
+    min_ids: int
+        Minimum number of unique IDs required to consider a location as shared
+        
+    Returns:
+    --------
+    list: All shared locations meeting the criteria
+    """
+    # Ensure Timestamp is datetime
+    if not pd.api.types.is_datetime64_any_dtype(gdf_gps['Timestamp']):
+        gdf_gps['Timestamp'] = pd.to_datetime(gdf_gps['Timestamp'])
+
+    # Round coordinates and time
+    gdf_gps['rounded_x'] = gdf_gps.geometry.x.round(location_precision)
+    gdf_gps['rounded_y'] = gdf_gps.geometry.y.round(location_precision)
+    gdf_gps['rounded_time'] = gdf_gps['Timestamp'].dt.round(time_window)
+    gdf_gps['date'] = gdf_gps['Timestamp'].dt.date
+
+    # Group by date, rounded location, and rounded time
+    grouped = gdf_gps.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time'])
+
+    # Find groups with more than min_ids unique id
+    shared = grouped.filter(lambda x: x['id'].nunique() >= min_ids)
+
+    if shared.empty:
+        print("No shared locations found.")
+        return []
+
+    # Get unique shared location groups
+    unique_shared = []
+    for name, group in shared.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time']):
+        ids = sorted(group['id'].unique())
+        
+        # Get people's names from car assignments
+        people = []
+        for id in ids:
+            person = car_data[car_data['CarID'] == id]
+            if not person.empty:
+                name = f"{person['FirstName'].iloc[0]} {person['LastName'].iloc[0]}"
+                people.append(f"{id} ({name})")
+            else:
+                people.append(f"{id}")
+                
+        unique_shared.append({
+            'x': group['rounded_x'].iloc[0],
+            'y': group['rounded_y'].iloc[0],
+            'ids': ids,
+            'people': people,
+            'time': group['rounded_time'].iloc[0],
+            'date': group['date'].iloc[0],
+            'count': len(ids)
+        })
+    
+    # Sort by number of IDs (descending) and then by time
+    unique_shared.sort(key=lambda x: (-x['count'], x['time']))
+    
+    return unique_shared
+
+# Replace the plot_shared_locations call with this:
+shared_locations = find_shared_locations(gdf_gps, 
+                                       time_window='1min', 
+                                       location_precision=5, 
+                                       min_ids=2)
+
+print(f"Found {len(shared_locations)} shared location instances")
+
+# Print the top occurrences with the most people
+print("\nTOP 20 SHARED LOCATIONS BY NUMBER OF PEOPLE:")
+print("-" * 80)
+for i, loc in enumerate(shared_locations[:20]):
+    print(f"{i+1}. Date/Time: {loc['date']} {loc['time'].strftime('%H:%M')}")
+    print(f"   Location: ({loc['x']}, {loc['y']})")
+    print(f"   People ({loc['count']}): {', '.join(loc['people'])}")
+    print(f"   {'=' * 70}")
+
+# Find significant groups (3+ people)
+significant_groups = [loc for loc in shared_locations if loc['count'] >= 3]
+print(f"\nFound {len(significant_groups)} significant shared locations (3+ people)")
+
+# Save results to CSV for further analysis
+results_df = pd.DataFrame([
+    {
+        'date': loc['date'],
+        'time': loc['time'],
+        'x': loc['x'], 
+        'y': loc['y'],
+        'num_people': loc['count'],
+        'people_ids': ', '.join(map(str, loc['ids'])),
+        'people_names': ', '.join(loc['people'])
+    }
+    for loc in shared_locations
+])
+
+results_df.to_csv(r'Projekt\shared_locations.csv', index=False)
+print(f"\nResults saved to shared_locations.csv")
+
