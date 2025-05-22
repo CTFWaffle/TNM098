@@ -1,6 +1,7 @@
 import geopandas as gpd
 import pandas as pd
 import matplotlib.pyplot as plt
+import datetime
 import numpy as np
 from pyproj import CRS
 from pykml import parser
@@ -544,6 +545,64 @@ results_df = pd.DataFrame([
     for loc in shared_locations
 ])
 
-results_df.to_csv(r'Projekt\shared_locations.csv', index=False)
-print(f"\nResults saved to shared_locations.csv")
+shared_locations = pd.read_csv(r'Projekt\data\MC2\shared_locations.csv', encoding='cp1252')
 
+# Save the date from the 'time' column in a different column
+shared_locations['date'] = pd.to_datetime(shared_locations['time']).dt.date
+# Remove the date from the 'time' column
+shared_locations['time'] = pd.to_datetime(shared_locations['time']).dt.time
+
+# Create a datetime.time object for 18:00
+time_threshold = datetime.time(18, 0)
+filtered_instances = shared_locations[shared_locations['time'] >= time_threshold]
+
+# Plot the filtered data
+def plot_evening_locations(data, title='Evening Shared Locations'):
+    """
+    Plot the filtered shared locations data.
+    
+    Parameters:
+    -----------
+    data: DataFrame
+        The filtered shared locations data
+    title: str
+        Title for the plot
+    """
+    # Create a figure and axis
+    fig, ax = plt.subplots(figsize=(12, 10))
+    
+    # Create a colormap based on the number of people
+    scatter = ax.scatter(
+        data['x'], 
+        data['y'], 
+        c=data['num_people'], 
+        cmap='viridis',
+        alpha=0.7,
+        s=data['num_people'] * 20,  # Scale point size by number of people
+        edgecolor='black'
+    )
+    # Add colorbar
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Number of People')
+    # Add annotations for points with more people
+    threshold = 3  # Adjust as needed
+    for _, row in data[data['num_people'] >= threshold].iterrows():
+        # Extract just the IDs for display
+        ids = row['people_ids'].split(', ')
+        id_text = ', '.join(ids[:3]) + ('...' if len(ids) > 3 else '')
+        
+        # Annotate the point with the IDs
+        ax.annotate(id_text, 
+                    (row['x'], row['y']), 
+                    textcoords="offset points", 
+                    xytext=(5,5),
+                    bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", alpha=0.7),
+                    fontsize=8)
+    # Set title and labels
+    ax.set_title(title)
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    ax.grid(alpha=0.3)
+    plt.show()
+
+plot_gps_data_by_day(gdf_gps, img, gdf, car_id=29, all_streets_img_path=None, movement_threshold=0.00005)

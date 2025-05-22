@@ -1,123 +1,124 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import datetime
+import matplotlib.image as mpimg
+import os
 
-# Load data
-cc_data = pd.read_csv(r'Projekt\data\MC2\cc_data.csv', encoding='cp1252')
-gps_data = pd.read_csv(r'Projekt\data\MC2\gps.csv', encoding='cp1252')
-car_assignments = pd.read_csv(r'Projekt\data\MC2\car-assignments.csv', encoding='cp1252')
+shared_locations = pd.read_csv(r'Projekt\data\MC2\shared_locations.csv', encoding='cp1252')
 
-# Function to find shared locations without plotting
-def find_shared_locations(gdf_gps, time_window='1min', location_precision=5, min_ids=2):
+# Save the date from the 'time' column in a different column
+shared_locations['date'] = pd.to_datetime(shared_locations['time']).dt.date
+# Remove the date from the 'time' column
+shared_locations['time'] = pd.to_datetime(shared_locations['time']).dt.time
+
+# Create a datetime.time object for 18:00
+time_threshold = datetime.time(18, 0)
+filtered_instances = shared_locations[shared_locations['time'] >= time_threshold]
+
+def plot_evening_locations(data, img_path=r'Projekt\data\MC2\MC2-tourist.jpg', 
+                          title="Shared Locations After 18:00"):
     """
-    Find locations where multiple IDs were at the same place and time.
+    Plot shared locations that occurred after 18:00 on the map
     
     Parameters:
     -----------
-    gdf_gps: DataFrame or GeoDataFrame
-        The GPS dataset with id and location information
-    time_window: str
-        Time window for grouping (e.g., '1min', '5min')
-    location_precision: int
-        Decimal places to round coordinates for proximity grouping
-    min_ids: int
-        Minimum number of unique IDs required to consider a location as shared
-        
-    Returns:
-    --------
-    list: All shared locations meeting the criteria
+    data: DataFrame
+        Filtered shared locations data after 18:00
+    img_path: str
+        Path to the map image
+    title: str
+        Title for the plot
     """
-    # Ensure Timestamp is datetime
-    if not pd.api.types.is_datetime64_any_dtype(gdf_gps['Timestamp']):
-        gdf_gps['Timestamp'] = pd.to_datetime(gdf_gps['Timestamp'])
-
-    # Round coordinates and time
-    if 'geometry' in gdf_gps.columns:
-        # For GeoDataFrame
-        gdf_gps['rounded_x'] = gdf_gps.geometry.x.round(location_precision)
-        gdf_gps['rounded_y'] = gdf_gps.geometry.y.round(location_precision)
-    else:
-        # For regular DataFrame
-        gdf_gps['rounded_x'] = gdf_gps['long'].round(location_precision)
-        gdf_gps['rounded_y'] = gdf_gps['lat'].round(location_precision)
-        
-    gdf_gps['rounded_time'] = gdf_gps['Timestamp'].dt.round(time_window)
-    gdf_gps['date'] = gdf_gps['Timestamp'].dt.date
-
-    # Group by date, rounded location, and rounded time
-    grouped = gdf_gps.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time'])
-
-    # Find groups with more than min_ids unique id
-    shared = grouped.filter(lambda x: x['id'].nunique() >= min_ids)
-
-    if shared.empty:
-        print("No shared locations found.")
-        return []
-
-    # Get unique shared location groups
-    unique_shared = []
-    for name, group in shared.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time']):
-        ids = sorted(group['id'].unique())
-        
-        # Get people's names from car assignments
-        people = []
-        for id in ids:
-            person = car_assignments[car_assignments['CarID'] == id]
-            if not person.empty:
-                name = f"{person['FirstName'].iloc[0]} {person['LastName'].iloc[0]}"
-                people.append(f"{id} ({name})")
-            else:
-                people.append(f"{id}")
-                
-        unique_shared.append({
-            'x': group['rounded_x'].iloc[0],
-            'y': group['rounded_y'].iloc[0],
-            'ids': ids,
-            'people': people,
-            'time': group['rounded_time'].iloc[0],
-            'date': group['date'].iloc[0],
-            'count': len(ids)
-        })
+    # Load the map image
+    img = mpimg.imread(img_path)
     
-    # Sort by number of IDs (descending) and then by time
-    unique_shared.sort(key=lambda x: (-x['count'], x['time']))
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 10))
     
-    return unique_shared
+    # Get approximate bounds from the data
+    minx, maxx = data['x'].min(), data['x'].max()
+    miny, maxy = data['y'].min(), data['y'].max()
+    
+    # Add some padding
+    padding = 0.001  # Adjust as needed
+    minx -= padding
+    maxx += padding
+    miny -= padding
+    maxy += padding
+    
+    # Display the background image
+    ax.imshow(img, extent=[minx, maxx, miny, maxy])
+    
+    # Create a colormap based on the number of people
+    scatter = ax.scatter(
+        data['x'], 
+        data['y'], 
+        c=data['num_people'], 
+        cmap='viridis',
+        alpha=0.7,
+        s=data['num_people'] * 20,  # Scale point size by number of people
+        edgecolor='black'
+    )
+    
+    # Add colorbar
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Number of People')
+    
+    # Add annotations for points with more people
+    threshold = 3  # Adjust as needed
+    for _, row in data[data['num_people'] >= threshold].iterrows():
+        # Extract just the IDs for display
+        ids = row['people_ids'].split(', ')
+        id_text = ', '.join(ids[:3]) + ('...' if len(ids) > 3 else '')
+        
+        ax.annotate(
+            f"{row['time'].strftime('%H:%M')}\n{row['num_people']} people\n{id_text}",
+            (row['x'], row['y']),
+            textcoords="offset points", 
+            xytext=(5, 5),
+            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", alpha=0.7),
+            fontsize=8
+        )
+    
+    # Set title and labels
+    ax.set_title(title)
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    ax.grid(alpha=0.3)
+    
+    plt.show()
+    
+    # Return the figure object for further customization if needed
+    return fig, ax
 
-# Find all shared locations
-shared_locations = find_shared_locations(gps_data, 
-                                       time_window='1min', 
-                                       location_precision=5, 
-                                       min_ids=2)
+# Load data
+shared_locations = pd.read_csv(r'Projekt\data\MC2\shared_locations.csv', encoding='cp1252')
+    
+# Process time columns
+shared_locations['date'] = pd.to_datetime(shared_locations['time']).dt.date
+shared_locations['time'] = pd.to_datetime(shared_locations['time']).dt.time
+    
+# Filter for times after 18:00
+time_threshold = datetime.time(18, 0)
+filtered_instances = shared_locations[shared_locations['time'] >= time_threshold]
+    
+print(f"Found {len(filtered_instances)} shared locations after 18:00")
+    
+# Plot the filtered data
+plot_evening_locations(filtered_instances)
 
-print(f"Found {len(shared_locations)} shared location instances")
+# Split the people names into separate columns
+people_names = filtered_instances['people_ids'].str.split(', ', expand=True)
+# Rename the columns
+people_names.columns = [f'Person_{i+1}' for i in range(people_names.shape[1])]
+# Concatenate the new columns with the original DataFrame
+filtered_instances = pd.concat([filtered_instances, people_names], axis=1)
 
-# Print the top occurrences with the most people
-print("\nTOP 20 SHARED LOCATIONS BY NUMBER OF PEOPLE:")
-print("-" * 80)
-for i, loc in enumerate(shared_locations[:20]):
-    print(f"{i+1}. Date/Time: {loc['date']} {loc['time'].strftime('%H:%M')}")
-    print(f"   Location: ({loc['x']}, {loc['y']})")
-    print(f"   People ({loc['count']}): {', '.join(loc['people'])}")
-    print(f"   {'=' * 70}")
+print(filtered_instances['people_ids'].unique())
 
-# Find significant groups (3+ people)
-significant_groups = [loc for loc in shared_locations if loc['count'] >= 3]
-print(f"\nFound {len(significant_groups)} significant shared locations (3+ people)")
+print(len(filtered_instances['people_ids'].unique()))
 
-# Save results to CSV for further analysis
-results_df = pd.DataFrame([
-    {
-        'date': loc['date'],
-        'time': loc['time'],
-        'x': loc['x'], 
-        'y': loc['y'],
-        'num_people': loc['count'],
-        'people_ids': ', '.join(map(str, loc['ids'])),
-        'people_names': ', '.join(loc['people'])
-    }
-    for loc in shared_locations
-])
+print(filtered_instances[filtered_instances['x']>=24.89])
 
-results_df.to_csv(r'Projekt\shared_locations.csv', index=False)
-print(f"\nResults saved to shared_locations.csv")
+print(filtered_instances[filtered_instances['x']<=24.868])

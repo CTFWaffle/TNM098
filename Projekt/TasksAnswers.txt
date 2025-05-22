@@ -1,0 +1,34 @@
+Using just the credit and loyalty card data, identify the most popular locations, and when they are popular.
+What anomalies do you see? What corrections would you recommend to correct these anomalies?
+Answer:
+
+Add the vehicle data to your analysis of the credit and loyalty card data. How does your assessment of the anomalies in question 1 change based on this new data? 
+What discrepancies between vehicle, credit, and loyalty card data do you find?
+Answer:
+
+Can you infer the owners of each credit card and loyalty card? What is your evidence? Where are there uncertainties in your method? 
+Where are there uncertainties in the data?
+Answer:
+
+Given the data sources provided, identify potential informal or unofficial relationships among GASTech personnel. Provide evidence for these relationships.
+Answer: 
+2014-01-12  18:30:00  15    12 (Hideki Cocinaro), 15 (Loreto Bodrogi)
+2014-01-18  18:35:00  21         13 (Inga Ferro), 21 (Hennie Osvaldo)
+2014-01-19  19:46:00  31   22 (Adra Nubarron), 31 (Sten Sanjorge Jr.)
+2014-01-19  19:47:00  31  21 (Hennie Osvaldo), 31 (Sten Sanjorge Jr.)  
+2014-01-10  19:10:00  8 (Lucas Alcazar), 18 (Birgitta Frente)
+2014-01-10  19:12:00  18    9 (Gustav Cazar), 18 (Birgitta Frente)
+2014-01-13  18:04:00  10  3 (Felix Balas), 10 (Ada Campo-Corrente)
+2014-01-18  18:25:00  2 (Lars Azada), 19 (Vira Frente)
+
+Do you see evidence of suspicious activity? Identify 1- 10 locations where you believe the suspicious activity is occurring, and why
+Answer: Bertrand doing something suspicious, why is he out at the scrap yard past midnight??
+
+
+# Example code approach
+# 1. Load all datasets
+# 2. For each credit card transaction:
+#    - Find GPS records at same timestamp and location
+#    - Link to employee through car assignment
+# 3. Repeat for loyalty card data
+# 4. Build profiles of each employee's movement and spending
