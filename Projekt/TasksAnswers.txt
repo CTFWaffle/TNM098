@@ -2,13 +2,20 @@ Using just the credit and loyalty card data, identify the most popular locations
 What anomalies do you see? What corrections would you recommend to correct these anomalies?
 Answer:
 
+Katerina's caffe, Hippokampos, Brew've been served and Guy's Gyros are the most popular locations, where Katerina's cafe is 
+the most popular location. The largest difference in creditcard transactions versus loyality card transactions are also at 
+Katerina's cafe and Brew've been served. Katerina's cafe is the only cafe that stays open during weekends where it gets 
+the same traffic as usual. Saturdays, the number of transactions is the largest out of all locations, 
+which is extra suspicious because all other caffes are closed. In general there are fewer transactions during weekends,
+however, some places get more traffic during weekends, an example of this is the Golf Course.
+
 Add the vehicle data to your analysis of the credit and loyalty card data. How does your assessment of the anomalies in question 1 change based on this new data? 
 What discrepancies between vehicle, credit, and loyalty card data do you find?
-Answer:
+Answer: The main anomalies are that there are transactions at places where people have 0 visits. See graph -_-
 
 Can you infer the owners of each credit card and loyalty card? What is your evidence? Where are there uncertainties in your method? 
 Where are there uncertainties in the data?
-Answer:
+Answer: Yes
 
 Given the data sources provided, identify potential informal or unofficial relationships among GASTech personnel. Provide evidence for these relationships.
 Answer: 

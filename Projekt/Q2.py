@@ -320,6 +320,9 @@ known_locations, clustering_coords, clustering_labels, clustering_model = identi
 # Now run the analysis with the identified locations
 employee_profiles = analyze_transactions(known_locations)
 
+# Print the full dictionary with nice formatting
+
+
 def analyze_results(profiles):
     """Analyze the results to identify patterns and anomalies and save to CSV"""
     # Find popular locations
@@ -412,8 +415,7 @@ def analyze_results(profiles):
                     'visit_count': count,
                     'average_visits': location_frequency.get(loc, 0)
                 })
-                print(f"{emp_id} visits {loc} unusually frequently ({count} times vs avg {location_frequency.get(loc, 0):.2f})")
-    
+                    
     # Convert to DataFrame and save to CSV
     unusual_patterns_df = pd.DataFrame(unusual_patterns_data)
     unusual_patterns_df.to_csv('unusual_patterns.csv', index=False)
@@ -632,5 +634,30 @@ def visualize_clusters_interactive(coords, labels, clustering_model=None, known_
 visualize_clusters_interactive(clustering_coords, clustering_labels, clustering_model, known_locations)
 
 create_density_heatmap(clustering_coords)
+
+def display_as_dataframe(profiles):
+    """Convert employee profiles to DataFrames for display"""
+    # Create summary DataFrame
+    summary_data = []
+    
+    for emp_id, profile in profiles.items():
+        row = {
+            'Employee': emp_id,
+            'Total Spent': f"${profile['total_spent']:.2f}",
+            'Credit Transactions': len(profile['credit_transactions']),
+            'Loyalty Transactions': len(profile['loyalty_transactions']),
+            'Locations Visited': len(profile['locations_visited']),
+            'Movement Records': len(profile['movement_patterns'])
+        }
+        summary_data.append(row)
+    
+    summary_df = pd.DataFrame(summary_data)
+    
+    # Display the summary
+    print("\nEMPLOYEE SUMMARY")
+    print(summary_df)
+    
+# Call after analyzing profiles
+display_as_dataframe(employee_profiles)
 
 
