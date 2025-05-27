@@ -13,12 +13,13 @@ filtered = df[(df['visit_count'] == 0) & (df['total_spent'] != 0)].copy()
 
 filtered['label'] = filtered['location'] 
 
-# Create interactive bar plot
+# Create interactive bar plot with viridis color map
 fig = px.bar(
     filtered,
     x='label',
     y='total_spent',
     color='employee',
+    color_discrete_sequence=px.colors.sequential.Viridis,  # Add this line for viridis colors
     title='Cases with 0 Visits but Nonzero Total Spent',
     labels={'label': 'Location', 'total_spent': 'Total Spent'},
 )

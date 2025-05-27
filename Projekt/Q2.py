@@ -220,7 +220,7 @@ def analyze_transactions(known_locations):
     # Create dictionaries to store results
     employee_profiles = {}
     
-    # Process credit card transactions
+    # Process credit card transactions...
     print("Processing credit card transactions...")
     for idx, transaction in cc_data.iterrows():
         # Find nearby GPS records
@@ -239,15 +239,22 @@ def analyze_transactions(known_locations):
                     'loyalty_transactions': [],
                     'locations_visited': set(),
                     'total_spent': 0,
-                    'movement_patterns': []
+                    'movement_patterns': [],
+                    'loyaltynum': None,  # Initialize with None
+                    'last4ccnum': None   # Add field for credit card number
                 }
             
+            # Store the credit card number if it's not already set
+            if employee_profiles[employee_id]['last4ccnum'] is None and 'last4ccnum' in transaction:
+                employee_profiles[employee_id]['last4ccnum'] = transaction['last4ccnum']
+                
             # Add transaction to employee profile
             employee_profiles[employee_id]['credit_transactions'].append({
                 'timestamp': transaction['timestamp'],
                 'location': transaction['location'],
                 'price': transaction['price'],
-                'car_id': nearby_gps['car_id'].iloc[0] if not nearby_gps.empty else None
+                'car_id': nearby_gps['car_id'].iloc[0] if not nearby_gps.empty else None,
+                'last4ccnum': transaction['last4ccnum'] if 'last4ccnum' in transaction else None
             })
             
             employee_profiles[employee_id]['total_spent'] += transaction['price']
@@ -268,17 +275,24 @@ def analyze_transactions(known_locations):
                     'loyalty_transactions': [],
                     'locations_visited': set(),
                     'total_spent': 0,
-                    'movement_patterns': []
+                    'movement_patterns': [],
+                    'loyaltynum': None,  # Initialize with None
+                    'last4ccnum': None   # Add field for credit card number
                 }
+            
+            # Store the loyalty number if it's not already set
+            if employee_profiles[employee_id]['loyaltynum'] is None and 'loyaltynum' in transaction:
+                employee_profiles[employee_id]['loyaltynum'] = transaction['loyaltynum']
             
             employee_profiles[employee_id]['loyalty_transactions'].append({
                 'timestamp': transaction['timestamp'],
-                'location': transaction['location']
+                'location': transaction['location'],
+                'loyaltynum': transaction['loyaltynum'] if 'loyaltynum' in transaction else None
             })
             
             employee_profiles[employee_id]['locations_visited'].add(transaction['location'])
     
-    # Add GPS movement patterns to profiles
+    # Add GPS movement patterns to profiles...
     print("Adding movement patterns...")
     for employee, car_info in car_assignments.iterrows():
         employee_id = f"{car_info['FirstName']} {car_info['LastName']}"
@@ -291,7 +305,9 @@ def analyze_transactions(known_locations):
                 'loyalty_transactions': [],
                 'locations_visited': set(),
                 'total_spent': 0,
-                'movement_patterns': []
+                'movement_patterns': [],
+                'loyaltynum': None,  # Initialize with None
+                'last4ccnum': None   # Add field for credit card number
             }
         
         # Get all GPS records for this car
@@ -362,70 +378,12 @@ def analyze_results(profiles):
     location_visits_df.to_csv('location_visits.csv', index=False)
     print("Location visits saved to location_visits.csv")
     
-    # Look for unusual patterns
-    print("\nLooking for unusual patterns...")
-    
-    # Example: Employees who visited locations outside work hours
-    unusual_patterns_data = []
-    
-    for emp_id, profile in profiles.items():
-        late_night_visits = []
-        for movement in profile['movement_patterns']:
-            if movement['timestamp'].hour >= 22 or movement['timestamp'].hour <= 5:
-                late_night_visits.append(movement)
-                
-                # Add to unusual patterns data
-                unusual_patterns_data.append({
-                    'employee': emp_id,
-                    'pattern_type': 'Late night visit',
-                    'timestamp': movement['timestamp'],
-                    'location': movement['nearest_location'],
-                    'latitude': movement['latitude'],
-                    'longitude': movement['longitude']
-                })
-        
-        if late_night_visits:
-            print(f"{emp_id} has {len(late_night_visits)} late-night location visits")
-    
-    # Add other unusual patterns
-    # For example, multiple visits to unusual locations
-    location_frequency = {}
-    for loc, count in location_counts.items():
-        location_frequency[loc] = count / len(profiles)
-    
-    for emp_id, profile in profiles.items():
-        emp_locations = {}
-        for location in profile['locations_visited']:
-            # Count this employee's visits to this location
-            visit_count = sum(1 for m in profile['movement_patterns'] 
-                            if m['nearest_location'] == location)
-            emp_locations[location] = visit_count
-        
-        # Check for locations this employee visits much more than others
-        for loc, count in emp_locations.items():
-            if count > 3 * location_frequency.get(loc, 0) and location_frequency.get(loc, 0) > 0:
-                # This employee visits this location 3x more than average
-                unusual_patterns_data.append({
-                    'employee': emp_id,
-                    'pattern_type': 'Unusually frequent visits',
-                    'timestamp': None,
-                    'location': loc,
-                    'latitude': None,
-                    'longitude': None,
-                    'visit_count': count,
-                    'average_visits': location_frequency.get(loc, 0)
-                })
-                    
-    # Convert to DataFrame and save to CSV
-    unusual_patterns_df = pd.DataFrame(unusual_patterns_data)
-    unusual_patterns_df.to_csv('unusual_patterns.csv', index=False)
-    print("Unusual patterns saved to unusual_patterns.csv")
     
     # More analyses can be added here based on project requirements
-    return location_visits_df, unusual_patterns_df
+    return location_visits_df
 
 # Run the analysis and get the dataframes
-location_visits_df, unusual_patterns_df = analyze_results(employee_profiles)
+location_visits_df = analyze_results(employee_profiles)
 
 def visualize_clusters(coords, labels, clustering_model=None, known_locations=None):
     # Create a scatterplot of the clusters
@@ -622,7 +580,13 @@ def visualize_clusters_interactive(coords, labels, clustering_model=None, known_
         title='MiniBatchKMeans Clustering Results (Interactive)',
         xaxis_title='Longitude',
         yaxis_title='Latitude',
-        legend=dict(itemsizing='constant'),
+        legend=dict(
+            itemsizing='constant',
+            x=0.01,  # Position legend at the left side
+            y=0.99,  # Position near the top
+            xanchor='left',  # Anchor point on the legend
+            yanchor='top'    # Anchor point on the legend
+        ),
         width=1000,
         height=800
     )
@@ -647,12 +611,17 @@ def display_as_dataframe(profiles):
             'Credit Transactions': len(profile['credit_transactions']),
             'Loyalty Transactions': len(profile['loyalty_transactions']),
             'Locations Visited': len(profile['locations_visited']),
-            'Movement Records': len(profile['movement_patterns'])
+            'Movement Records': len(profile['movement_patterns']),
+            'Loyalty Number': profile['loyaltynum'] if profile['loyaltynum'] is not None else 'N/A',
+            'Credit Card Last 4': profile['last4ccnum'] if profile['last4ccnum'] is not None else 'N/A'
         }
         summary_data.append(row)
     
     summary_df = pd.DataFrame(summary_data)
     
+    # Save the summary DataFrame to CSV
+    summary_df.to_csv('employee_summary.csv', index=False)
+
     # Display the summary
     print("\nEMPLOYEE SUMMARY")
     print(summary_df)
