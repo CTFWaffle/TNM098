@@ -102,7 +102,9 @@ def save_all_streets_plot(gdf_base, base_map_img, output_path):
         plt.close()
     return output_path
 
-def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_streets_img_path=None, movement_threshold=0.00005, max_days=None):
+def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_streets_img_path=None, 
+                         movement_threshold=0.00005, max_days=None, show_plots=True, 
+                         save_plots=False, output_dir="car_plots"):
     """
     Create separate plots for each day of GPS data, highlighting spots with minimal movement.
     
@@ -120,6 +122,12 @@ def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_stree
         Threshold for considering movement as minimal (in coordinate units)
     max_days: int or None
         Maximum number of days to plot. If None, all days will be plotted.
+    show_plots: bool
+        Whether to display the plots using plt.show()
+    save_plots: bool
+        Whether to save the plots to files
+    output_dir: str
+        Base directory for saving plots
     """
     # Create subset of GPS data for the specified car ID
     gps_data_subset = gps_data[gps_data['id'] == car_id].copy()
@@ -127,6 +135,11 @@ def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_stree
     if len(gps_data_subset) == 0:
         print(f"No data found for car ID {car_id}")
         return
+    
+    # Create car-specific output directory if saving plots
+    if save_plots:
+        car_output_dir = os.path.join(output_dir, f"car_{car_id}")
+        os.makedirs(car_output_dir, exist_ok=True)
         
     # Ensure the 'Timestamp' column is in datetime format
     if not pd.api.types.is_datetime64_any_dtype(gps_data_subset['Timestamp']):
@@ -139,9 +152,6 @@ def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_stree
     # Limit the number of days if max_days is specified
     if max_days is not None:
         unique_dates = unique_dates[:max_days]
-    
-    # Get car ID for the title
-    car_id = gps_data_subset['id'].iloc[0]
     
     # Get the bounding box for consistent display
     minx, miny, maxx, maxy = gdf_base.total_bounds
@@ -313,296 +323,64 @@ def plot_gps_data_by_day(gps_data, base_map_img, gdf_base, car_id=105, all_stree
             ax.plot([], [], marker='X', color='black', markersize=14, linestyle='None', label='Previous day end')
         ax.legend()
         
-        plt.show()
-
-def plot_shared_locations(gdf_gps, time_window='1min', location_precision=5, max_per_plot=20, grid_size=(4, 4)):
-    """
-    Find and plot locations where multiple IDs were at the same place and time.
-    
-    Parameters:
-    -----------
-    gdf_gps: GeoDataFrame
-        The GPS dataset with id and location information
-    time_window: str
-        Time window for grouping (e.g., '1min', '5min')
-    location_precision: int
-        Decimal places to round coordinates for proximity grouping
-    max_per_plot: int
-        Maximum number of shared locations to show per plot
-    grid_size: tuple
-        Number of plots in grid (rows, columns)
-    
-    Returns:
-    --------
-    list: Any remaining shared locations not plotted
-    """
-    # Ensure Timestamp is datetime
-    if not pd.api.types.is_datetime64_any_dtype(gdf_gps['Timestamp']):
-        gdf_gps['Timestamp'] = pd.to_datetime(gdf_gps['Timestamp'])
-
-    # Round coordinates and time
-    gdf_gps['rounded_x'] = gdf_gps.geometry.x.round(location_precision)
-    gdf_gps['rounded_y'] = gdf_gps.geometry.y.round(location_precision)
-    gdf_gps['rounded_time'] = gdf_gps['Timestamp'].dt.round(time_window)
-    gdf_gps['date'] = gdf_gps['Timestamp'].dt.date
-
-    # Group by date, rounded location, and rounded time
-    grouped = gdf_gps.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time'])
-
-    # Find groups with more than one unique id
-    shared = grouped.filter(lambda x: x['id'].nunique() > 1)
-
-    if shared.empty:
-        print("No shared locations found.")
-        return []
-
-    # Get unique shared location groups
-    unique_shared = []
-    for _, group in shared.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time']):
-        unique_shared.append({
-            'x': group['rounded_x'].iloc[0],
-            'y': group['rounded_y'].iloc[0],
-            'ids': sorted(group['id'].unique()),
-            'time': group['rounded_time'].iloc[0],
-            'date': group['date'].iloc[0],
-            'group': group
-        })
-    
-    # Calculate how many plots we need
-    rows, cols = grid_size
-    max_plots = rows * cols
-    plots_needed = (len(unique_shared) + max_per_plot - 1) // max_per_plot
-    
-    if plots_needed == 0:
-        return []
-    
-    # Limit plots to the maximum grid size
-    plots_to_create = min(plots_needed, max_plots)
-    
-    # Create figure with grid of subplots
-    if plots_to_create > 1:
-        fig, axes = plt.subplots(rows, cols, figsize=(cols*5, rows*5), squeeze=False)
-        axes = axes.flatten()
-        # Hide unused subplots
-        for i in range(plots_to_create, len(axes)):
-            axes[i].axis('off')
-    else:
-        fig, ax = plt.subplots(figsize=(12, 10))
-        axes = [ax]
-    
-    # Get bounding box for consistent display
-    minx, miny, maxx, maxy = gdf.total_bounds
-    
-    # Plot shared locations in batches
-    remaining = []
-    total_plotted = 0
-    
-    for plot_idx in range(plots_to_create):
-        if total_plotted >= len(unique_shared):
-            break
+        # At the end, instead of just plt.show()
+        if save_plots:
+            # Create a filename with car_id and date
+            date_str = date.strftime("%Y-%m-%d")
+            filename = f"car_{car_id}_day_{i+1}_{date_str}.png"
+            filepath = os.path.join(car_output_dir, filename)
+            plt.savefig(filepath, bbox_inches='tight', dpi=150)
+            print(f"Saved: {filepath}")
             
-        ax = axes[plot_idx]
-        
-        # Calculate batch for this plot
-        start_idx = plot_idx * max_per_plot
-        end_idx = min(start_idx + max_per_plot, len(unique_shared))
-        batch = unique_shared[start_idx:end_idx]
-        
-        # Setup the plot
-        ax.imshow(img, extent=[minx, maxx, miny, maxy])
-        gdf.plot(ax=ax, color='red', alpha=0.3, edgecolor='k')
-        
-        # Plot each shared location in this batch
-        for item in batch:
-            ax.plot(item['x'], item['y'], marker='o', color='orange', markersize=10)
-            ids_str = ', '.join(map(str, item['ids']))
-            time_str = item['time'].strftime('%Y-%m-%d %H:%M')
-            ax.annotate(f"{time_str}\nIDs: {ids_str}", 
-                       (item['x'], item['y']), 
-                       textcoords="offset points", 
-                       xytext=(5,5),
-                       bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", alpha=0.7),
-                       fontsize=8)
-        
-        ax.set_title(f"Shared Locations (Batch {plot_idx+1} of {plots_to_create})")
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        
-        total_plotted += len(batch)
-    
-    # Store any remaining items
-    if len(unique_shared) > total_plotted:
-        remaining = unique_shared[total_plotted:]
-    
-    plt.tight_layout()
-    plt.show()
-    
-    # Return remaining occurrences
-    return remaining
+        if show_plots:
+            plt.show()
+        else:
+            plt.close()
 
-# Find shared locations without plotting
-def find_shared_locations(gdf_gps, time_window='1min', location_precision=5, min_ids=2):
+def save_all_car_plots(gps_data, base_map_img, gdf_base, car_ids=None, output_dir="car_plots",
+                      movement_threshold=0.00005, max_days=None):
     """
-    Find locations where multiple IDs were at the same place and time.
+    Save plots for multiple car IDs into separate folders.
     
     Parameters:
     -----------
-    gdf_gps: GeoDataFrame
-        The GPS dataset with id and location information
-    time_window: str
-        Time window for grouping (e.g., '1min', '5min')
-    location_precision: int
-        Decimal places to round coordinates for proximity grouping
-    min_ids: int
-        Minimum number of unique IDs required to consider a location as shared
-        
-    Returns:
-    --------
-    list: All shared locations meeting the criteria
+    gps_data: GeoDataFrame
+        The complete GPS dataset
+    base_map_img: array-like
+        The base map image
+    gdf_base: GeoDataFrame
+        The base map GeoDataFrame
+    car_ids: list or None
+        List of car IDs to process. If None, all unique car IDs in the data will be used.
+    output_dir: str
+        Base directory for saving plots
+    movement_threshold: float
+        Threshold for considering movement as minimal
+    max_days: int or None
+        Maximum number of days to plot per car
     """
-    # Ensure Timestamp is datetime
-    if not pd.api.types.is_datetime64_any_dtype(gdf_gps['Timestamp']):
-        gdf_gps['Timestamp'] = pd.to_datetime(gdf_gps['Timestamp'])
-
-    # Round coordinates and time
-    gdf_gps['rounded_x'] = gdf_gps.geometry.x.round(location_precision)
-    gdf_gps['rounded_y'] = gdf_gps.geometry.y.round(location_precision)
-    gdf_gps['rounded_time'] = gdf_gps['Timestamp'].dt.round(time_window)
-    gdf_gps['date'] = gdf_gps['Timestamp'].dt.date
-
-    # Group by date, rounded location, and rounded time
-    grouped = gdf_gps.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time'])
-
-    # Find groups with more than min_ids unique id
-    shared = grouped.filter(lambda x: x['id'].nunique() >= min_ids)
-
-    if shared.empty:
-        print("No shared locations found.")
-        return []
-
-    # Get unique shared location groups
-    unique_shared = []
-    for name, group in shared.groupby(['date', 'rounded_x', 'rounded_y', 'rounded_time']):
-        ids = sorted(group['id'].unique())
-        
-        # Get people's names from car assignments
-        people = []
-        for id in ids:
-            person = car_data[car_data['CarID'] == id]
-            if not person.empty:
-                name = f"{person['FirstName'].iloc[0]} {person['LastName'].iloc[0]}"
-                people.append(f"{id} ({name})")
-            else:
-                people.append(f"{id}")
-                
-        unique_shared.append({
-            'x': group['rounded_x'].iloc[0],
-            'y': group['rounded_y'].iloc[0],
-            'ids': ids,
-            'people': people,
-            'time': group['rounded_time'].iloc[0],
-            'date': group['date'].iloc[0],
-            'count': len(ids)
-        })
+    # If no car_ids specified, use all unique IDs in the data
+    if car_ids is None:
+        car_ids = sorted(gps_data['id'].unique())
     
-    # Sort by number of IDs (descending) and then by time
-    unique_shared.sort(key=lambda x: (-x['count'], x['time']))
+    # Ensure the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
     
-    return unique_shared
-
-# Replace the plot_shared_locations call with this:
-shared_locations = find_shared_locations(gdf_gps, 
-                                       time_window='1min', 
-                                       location_precision=5, 
-                                       min_ids=2)
-
-print(f"Found {len(shared_locations)} shared location instances")
-
-# Print the top occurrences with the most people
-print("\nTOP 20 SHARED LOCATIONS BY NUMBER OF PEOPLE:")
-print("-" * 80)
-for i, loc in enumerate(shared_locations[:20]):
-    print(f"{i+1}. Date/Time: {loc['date']} {loc['time'].strftime('%H:%M')}")
-    print(f"   Location: ({loc['x']}, {loc['y']})")
-    print(f"   People ({loc['count']}): {', '.join(loc['people'])}")
-    print(f"   {'=' * 70}")
-
-# Find significant groups (3+ people)
-significant_groups = [loc for loc in shared_locations if loc['count'] >= 3]
-print(f"\nFound {len(significant_groups)} significant shared locations (3+ people)")
-
-# Save results to CSV for further analysis
-results_df = pd.DataFrame([
-    {
-        'date': loc['date'],
-        'time': loc['time'],
-        'x': loc['x'], 
-        'y': loc['y'],
-        'num_people': loc['count'],
-        'people_ids': ', '.join(map(str, loc['ids'])),
-        'people_names': ', '.join(loc['people'])
-    }
-    for loc in shared_locations
-])
-
-shared_locations = pd.read_csv(r'Projekt\data\MC2\shared_locations.csv', encoding='cp1252')
-
-# Save the date from the 'time' column in a different column
-shared_locations['date'] = pd.to_datetime(shared_locations['time']).dt.date
-# Remove the date from the 'time' column
-shared_locations['time'] = pd.to_datetime(shared_locations['time']).dt.time
-
-# Create a datetime.time object for 18:00
-time_threshold = datetime.time(18, 0)
-filtered_instances = shared_locations[shared_locations['time'] >= time_threshold]
-
-# Plot the filtered data
-def plot_evening_locations(data, title='Evening Shared Locations'):
-    """
-    Plot the filtered shared locations data.
+    print(f"Processing {len(car_ids)} car IDs...")
     
-    Parameters:
-    -----------
-    data: DataFrame
-        The filtered shared locations data
-    title: str
-        Title for the plot
-    """
-    # Create a figure and axis
-    fig, ax = plt.subplots(figsize=(12, 10))
-    
-    # Create a colormap based on the number of people
-    scatter = ax.scatter(
-        data['x'], 
-        data['y'], 
-        c=data['num_people'], 
-        cmap='viridis',
-        alpha=0.7,
-        s=data['num_people'] * 20,  # Scale point size by number of people
-        edgecolor='black'
-    )
-    # Add colorbar
-    cbar = plt.colorbar(scatter, ax=ax)
-    cbar.set_label('Number of People')
-    # Add annotations for points with more people
-    threshold = 3  # Adjust as needed
-    for _, row in data[data['num_people'] >= threshold].iterrows():
-        # Extract just the IDs for display
-        ids = row['people_ids'].split(', ')
-        id_text = ', '.join(ids[:3]) + ('...' if len(ids) > 3 else '')
-        
-        # Annotate the point with the IDs
-        ax.annotate(id_text, 
-                    (row['x'], row['y']), 
-                    textcoords="offset points", 
-                    xytext=(5,5),
-                    bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", alpha=0.7),
-                    fontsize=8)
-    # Set title and labels
-    ax.set_title(title)
-    ax.set_xlabel('Longitude')
-    ax.set_ylabel('Latitude')
-    ax.grid(alpha=0.3)
-    plt.show()
+    # Process each car ID
+    for car_id in car_ids:
+        print(f"Processing car ID: {car_id}")
+        plot_gps_data_by_day(
+            gps_data, base_map_img, gdf_base, car_id=car_id, 
+            movement_threshold=movement_threshold, max_days=max_days,
+            show_plots=False, save_plots=True, output_dir=output_dir
+        )
 
-plot_gps_data_by_day(gdf_gps, img, gdf, car_id=29, all_streets_img_path=None, movement_threshold=0.00005)
+# Instead of: plot_gps_data_by_day(gdf_gps, img, gdf, car_id=1, all_streets_img_path=None, movement_threshold=0.00005)
+
+# Save plots for all cars
+save_all_car_plots(gdf_gps, img, gdf, output_dir="car_plots", movement_threshold=0.00005)
+
+# Or for specific car IDs only
+# save_all_car_plots(gdf_gps, img, gdf, car_ids=[1, 2, 3, 4, 5], output_dir="car_plots", movement_threshold=0.00005)
