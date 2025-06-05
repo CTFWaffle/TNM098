@@ -287,10 +287,14 @@ def analyze_transactions(known_locations):
             employee_profiles[employee_id]['loyalty_transactions'].append({
                 'timestamp': transaction['timestamp'],
                 'location': transaction['location'],
-                'loyaltynum': transaction['loyaltynum'] if 'loyaltynum' in transaction else None
+                'loyaltynum': transaction['loyaltynum'] if 'loyaltynum' in transaction else None,
+                'price': transaction['price'] if 'price' in transaction else 0  # Add the price field
             })
             
             employee_profiles[employee_id]['locations_visited'].add(transaction['location'])
+        
+            if 'price' in transaction:
+                employee_profiles[employee_id]['total_spent'] += transaction['price']
     
     # Add GPS movement patterns to profiles...
     print("Adding movement patterns...")
@@ -369,8 +373,10 @@ def analyze_results(profiles):
                 'employee': emp_id,
                 'location': location,
                 'visit_count': visit_count,
-                'total_spent': sum(t['price'] for t in profile['credit_transactions'] 
-                                 if t['location'] == location)
+                'total_spent': (
+                    sum(t['price'] for t in profile['credit_transactions'] if t['location'] == location) +
+                    sum(t['price'] for t in profile['loyalty_transactions'] if t['location'] == location)
+                )
             })
     
     # Convert to DataFrame and save to CSV
@@ -605,9 +611,22 @@ def display_as_dataframe(profiles):
     summary_data = []
     
     for emp_id, profile in profiles.items():
+        # Calculate credit spending from credit transactions only
+        credit_spent = sum(transaction.get('price', 0) 
+                          for transaction in profile['credit_transactions'])
+        
+        # Calculate loyalty spending from loyalty transactions
+        loyalty_spent = sum(transaction.get('price', 0) 
+                           for transaction in profile['loyalty_transactions'])
+        
+        # Total spent is the sum of both
+        total_spent = credit_spent + loyalty_spent
+        
         row = {
             'Employee': emp_id,
-            'Total Spent': f"${profile['total_spent']:.2f}",
+            'Credit Card Spent': credit_spent,
+            'Loyalty Card Spent': loyalty_spent,
+            'Total Spent': total_spent,
             'Credit Transactions': len(profile['credit_transactions']),
             'Loyalty Transactions': len(profile['loyalty_transactions']),
             'Locations Visited': len(profile['locations_visited']),

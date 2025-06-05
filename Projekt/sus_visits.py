@@ -8,6 +8,9 @@ pio.renderers.default = 'browser'
 # Load the data
 df = pd.read_csv('location_visits.csv')
 
+# Ensure total_spent is numeric (remove $ and commas if present)
+df['total_spent'] = pd.to_numeric(df['total_spent'].replace('[\$,]', '', regex=True), errors='coerce')
+
 # Filter for rows where visit_count == 0 and total_spent != 0
 filtered = df[(df['visit_count'] == 0) & (df['total_spent'] != 0)].copy()
 

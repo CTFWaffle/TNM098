@@ -4,34 +4,42 @@ import plotly.io as pio
 
 df = pd.read_csv('employee_summary.csv')
 
+print(df)
+
 # Set renderer to open in browser
 pio.renderers.default = 'browser'
 
-# Create a horizontal bar chart (note the swapped x and y parameters)
+# Create a stacked bar chart showing both spending types
 fig = px.bar(
     df,
-    x='Employee',  # Employee names now on y-axis
-    y='Total Spent',  # Total spent on x-axis
-    title='Total Spent by Employee',
-    labels={'Employee': 'Employee', 'Total Spent': 'Total Spent ($)'},
+    x='Employee',
+    y=['Loyalty Card Spent', 'Credit Card Spent'],  # Use sum columns instead of transaction counts
+    title='Employee Spending by Payment Method',
+    labels={
+        'Employee': 'Employee', 
+        'value': 'Amount Spent ($)', 
+        'variable': 'Payment Method'
+    },
     height=800,
-    color_discrete_sequence=['#3366CC'],
+    color_discrete_sequence=['#FF9900','#3366CC'],  # Different colors for categories
+    barmode='stack'  # Stack the bars to show total and components
 )
 
 # Format the layout for better readability
 fig.update_layout(
-    yaxis_title='Employee',  # y-axis is now Employee
-    xaxis_title='Total Spent ($)',  # x-axis is now Total Spent
+    yaxis_title='Amount Spent ($)',
+    xaxis_title='Employee',
     margin=dict(l=150),
     autosize=True,
     xaxis=dict(
-        categoryorder='total ascending',  # This ensures bars are ordered by their values
+        categoryorder='total ascending',  # Order by total amount
     ),
     yaxis=dict(
-        type='linear',  # Ensure linear numerical axis
-        autorange=True,  # Allow automatic range calculation
+        type='linear',
+        autorange=True,
         tickformat='$,.2f',  # Format ticks as currency
-    )
+    ),
+    legend_title_text='Payment Method'
 )
 
 fig.show()
