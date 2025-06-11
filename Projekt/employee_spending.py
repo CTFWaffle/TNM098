@@ -2,44 +2,44 @@ import pandas as pd
 import plotly.express as px
 import plotly.io as pio
 
+# Load employee spending summary data from CSV
 df = pd.read_csv('employee_summary.csv')
 
-print(df)
-
-# Set renderer to open in browser
+# Set Plotly to render plots in the default web browser
 pio.renderers.default = 'browser'
 
-# Create a stacked bar chart showing both spending types
+# Create a stacked bar chart to visualize employee spending by payment method
 fig = px.bar(
     df,
-    x='Employee',
-    y=['Loyalty Card Spent', 'Credit Card Spent'],  # Use sum columns instead of transaction counts
+    x='Employee',  # Employee names on the x-axis
+    y=['Loyalty Card Spent', 'Credit Card Spent'],  # Amounts spent by payment method
     title='Employee Spending by Payment Method',
     labels={
-        'Employee': 'Employee', 
-        'value': 'Amount Spent ($)', 
+        'Employee': 'Employee',
+        'value': 'Amount Spent ($)',
         'variable': 'Payment Method'
     },
-    height=800,
-    color_discrete_sequence=['#FF9900','#3366CC'],  # Different colors for categories
-    barmode='stack'  # Stack the bars to show total and components
+    height=800,  # Chart height in pixels
+    color_discrete_sequence=['#FF9900', '#3366CC'],  # Custom colors for each payment method
+    barmode='stack'  # Stack bars to show total and breakdown by method
 )
 
-# Format the layout for better readability
+# Update chart layout for improved readability and appearance
 fig.update_layout(
-    yaxis_title='Amount Spent ($)',
-    xaxis_title='Employee',
-    margin=dict(l=150),
-    autosize=True,
+    yaxis_title='Amount Spent ($)',  # Label for y-axis
+    xaxis_title='Employee',          # Label for x-axis
+    margin=dict(l=150),              # Add left margin for long employee names
+    autosize=True,                   # Enable automatic sizing
     xaxis=dict(
-        categoryorder='total ascending',  # Order by total amount
+        categoryorder='total ascending',  # Order employees by total spending (ascending)
     ),
     yaxis=dict(
         type='linear',
         autorange=True,
-        tickformat='$,.2f',  # Format ticks as currency
+        tickformat='$,.2f',  # Format y-axis ticks as currency
     ),
-    legend_title_text='Payment Method'
+    legend_title_text='Payment Method'   # Title for the legend
 )
 
+# Display the interactive chart in the browser
 fig.show()

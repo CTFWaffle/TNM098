@@ -2,44 +2,71 @@ import pandas as pd
 import plotly.express as px
 import plotly.io as pio
 
-# Set renderer to open in browser
+# =========================
+# Plotly Renderer Setup
+# =========================
+
+# Set Plotly to open plots in the default web browser
 pio.renderers.default = 'browser'
 
-# Load the data
+# =========================
+# Data Loading & Cleaning
+# =========================
+
+# Load the location visits data
 df = pd.read_csv('location_visits.csv')
 
-# Ensure total_spent is numeric (remove $ and commas if present)
-df['total_spent'] = pd.to_numeric(df['total_spent'].replace('[\$,]', '', regex=True), errors='coerce')
+# Ensure 'total_spent' is numeric (remove $ and commas if present)
+df['total_spent'] = pd.to_numeric(
+    df['total_spent'].replace('[\$,]', '', regex=True),
+    errors='coerce'
+)
 
-# Filter for rows where visit_count == 0 and total_spent != 0
+# =========================
+# Data Filtering
+# =========================
+
+# Filter for cases where there are 0 visits but nonzero spending
 filtered = df[(df['visit_count'] == 0) & (df['total_spent'] != 0)].copy()
 
-filtered['label'] = filtered['location'] 
+# Create a label column for plotting (can be customized as needed)
+filtered['label'] = filtered['location']
 
-# Create interactive bar plot with viridis color map
+# =========================
+# Interactive Bar Plot
+# =========================
+
+# Create an interactive bar plot using Plotly Express with Viridis color map
 fig = px.bar(
     filtered,
     x='label',
     y='total_spent',
     color='employee',
-    color_discrete_sequence=px.colors.sequential.Viridis,  # Add this line for viridis colors
+    color_discrete_sequence=px.colors.sequential.Viridis,
     title='Cases with 0 Visits but Nonzero Total Spent',
     labels={'label': 'Location', 'total_spent': 'Total Spent'},
 )
 
-# After creating the figure with px.bar
+# Hide all traces by default (user can select from legend)
 for trace in fig.data:
     trace.visible = "legendonly"
 
+# Update layout for better readability
 fig.update_layout(
     xaxis_tickangle=-90,
     xaxis_tickfont_size=10,
     legend_title_text='Employee',
-    margin=dict(b=150)
+    margin=dict(b=150)  # Add space for long x-axis labels
 )
 
-# Add Select All / Deselect All buttons
+# =========================
+# Add Select All / Deselect All Buttons
+# =========================
+
+# Number of unique employees (for controlling trace visibility)
 num_employees = filtered['employee'].nunique()
+
+# Add interactive buttons to select/deselect all employees
 fig.update_layout(
     updatemenus=[
         dict(
@@ -63,5 +90,9 @@ fig.update_layout(
         )
     ]
 )
+
+# =========================
+# Show Plot
+# =========================
 
 fig.show()
