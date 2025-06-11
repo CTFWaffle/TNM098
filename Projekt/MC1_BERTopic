@@ -1,0 +1,117 @@
+import pandas as pd
+import re
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
+from bertopic import BERTopic
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+
+# === LOAD DATA ===
+# Load article metadata and prepare lowercase content and source
+news = pd.read_csv("news_articles_metadata.csv")
+news["content"] = news["content"].fillna("").astype(str).str.lower()
+news["source"] = news["source"].fillna("").astype(str).str.lower()
+
+# === GROUP ARTICLES BY SOURCE ===
+# Combine all articles for each source into one large document
+grouped = news.groupby("source")["content"].apply(lambda texts: " ".join(texts)).reset_index()
+
+# === CLEAN TEXT ===
+# Remove digits and special characters (leave only letters and spaces)
+grouped["content"] = grouped["content"].apply(lambda x: re.sub(r"[^a-z\s]", " ", x))
+
+# Create copies for each topic model
+grouped_lda = grouped.copy()
+grouped_bertopic = grouped.copy()
+
+# === LDA TOPIC MODELING ===
+
+# Vectorize text using Bag-of-Words
+vectorizer = CountVectorizer(
+    stop_words='english',
+    max_df=0.95,
+    min_df=2
+)
+X = vectorizer.fit_transform(grouped_lda["content"])
+
+# Fit Latent Dirichlet Allocation with 5 topics
+lda = LatentDirichletAllocation(n_components=5, random_state=0)
+lda.fit(X)
+
+# Extract top words from each LDA topic
+def get_topics(model, feature_names, n_top_words=10):
+    topics = []
+    for topic_idx, topic in enumerate(model.components_):
+        top_words = [feature_names[i] for i in topic.argsort()[:-n_top_words - 1:-1]]
+        topics.append(top_words)
+    return topics
+
+feature_names = vectorizer.get_feature_names_out()
+topics = get_topics(lda, feature_names)
+
+# Assign dominant topic to each source
+topic_distributions = lda.transform(X)
+grouped_lda["dominant_topic"] = topic_distributions.argmax(axis=1)
+grouped_lda["topic_words"] = grouped_lda["dominant_topic"].apply(lambda idx: topics[idx])
+
+# Show LDA result: most representative topic and words per source
+pd.set_option('display.max_colwidth', None)
+print(grouped_lda[["source", "dominant_topic", "topic_words"]])
+
+# === BERTopic AT SOURCE LEVEL ===
+
+# Remove stopwords for BERTopic (custom function)
+def remove_stop_words(text):
+    tokens = re.findall(r"[a-zA-Z]+", text.lower())
+    return " ".join([t for t in tokens if t not in ENGLISH_STOP_WORDS])
+
+# Clean text from grouped sources
+grouped_bertopic["content"] = grouped["content"].apply(remove_stop_words)
+
+# Convert to list of documents
+docs = grouped_bertopic["content"].tolist()
+
+# Fit BERTopic on grouped (per-source) documents
+topic_model = BERTopic(language="english", calculate_probabilities=True, verbose=True)
+topics, probs = topic_model.fit_transform(docs)
+
+# Add topic results to dataframe
+grouped_bertopic["topic"] = topics
+grouped_bertopic["topic_words"] = grouped_bertopic["topic"].apply(lambda t: topic_model.get_topic(t))
+
+# Display BERTopic results for each source
+pd.set_option('display.max_colwidth', None)
+print(grouped_bertopic[["source", "topic", "topic_words"]])
+
+# === BERTopic AT ARTICLE LEVEL ===
+
+# Clean all individual articles for BERTopic
+news_nostop = news["content"].apply(remove_stop_words)
+docs_bert = news_nostop.tolist()
+
+# Fit BERTopic at article level (each document = one article)
+topic_model = BERTopic(language="english", verbose=True)
+topics, probs = topic_model.fit_transform(docs_bert)
+
+# Create topic assignment per article
+results = pd.DataFrame({
+    "source": news["source"],
+    "topic": topics
+})
+
+# Count number of articles per topic and source
+summary = results.groupby(["source", "topic"]).size().reset_index(name="article_count")
+
+# Map topic → top words
+topic_word_map = {
+    t: topic_model.get_topic(t) for t in summary["topic"].unique() if t != -1
+}
+summary["topic_words"] = summary["topic"].map(
+    lambda t: [w for w, _ in topic_word_map.get(t, [])]
+)
+
+# Make topic words more readable (convert to string)
+summary["topic_words"] = summary["topic_words"].apply(lambda words: " ".join(words) if words else "")
+
+# Save to CSV
+summary.to_csv("bertopic_topics_per_source.csv", index=False)
+print("Saved: bertopic_topics_per_source.csv")

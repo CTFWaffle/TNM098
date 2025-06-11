@@ -1,0 +1,13 @@
+source,quoted_by,quote_counts
+international news,"['athena speaks', 'central bulletin', 'everyday news', 'international times', 'news desk', 'news online today', 'the abila post', 'the explainer', 'the general post', 'the guide', 'the light of truth', 'the tulip', 'the world', 'who what news', 'world journal', 'world source', 'worldwise']","[1, 5, 1, 1, 1, 4, 5, 4, 4, 1, 5, 3, 5, 5, 1, 1, 2]"
+international times,"['the explainer', 'the light of truth']","[1, 1]"
+kronos star,"['athena speaks', 'central bulletin', 'daily pegasus', 'everyday news', 'international news', 'international times', 'news online today', 'the abila post', 'the continent', 'the explainer', 'the light of truth', 'the truth', 'the wrap', 'world journal', 'world source']","[1, 1, 1, 3, 1, 1, 1, 1, 2, 2, 1, 1, 2, 2, 1]"
+tethys news,['homeland illumination'],[1]
+the abila post,"['central bulletin', 'the world', 'who what news']","[1, 1, 1]"
+the continent,['world journal'],[2]
+the explainer,"['the abila post', 'the continent', 'the orb']","[1, 2, 1]"
+the general post,['the explainer'],[1]
+the orb,"['centrum sentinel', 'daily pegasus', 'the truth']","[1, 1, 2]"
+the tulip,['the continent'],[2]
+the world,"['everyday news', 'international times', 'news online today', 'the continent', 'the general post', 'the wrap', 'world journal']","[2, 2, 2, 1, 2, 1, 1]"
+the wrap,"['the guide', 'the orb']","[1, 1]"

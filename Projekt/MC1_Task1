@@ -1,0 +1,630 @@
+# === IMPORTS ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
+from nltk.corpus import stopwords, wordnet
+from nltk import word_tokenize, sent_tokenize, pos_tag
+from nltk.stem import WordNetLemmatizer
+from difflib import SequenceMatcher
+import plotly.express as px
+import plotly.io as pio
+
+pio.renderers.default = 'browser'
+
+# Run these once if NLTK resources are missing
+
+#nltk.download('wordnet')
+#nltk.download('punkt')
+#nltk.download('stopwords')
+#nltk.download('averaged_perceptron_tagger_eng')
+
+
+# === TEXT HELPERS ===
+
+lemmatizer = WordNetLemmatizer()
+
+# Convert NLTK POS tags to WordNet POS format
+def get_wordnet_pos(tag):
+    if tag.startswith('J'):
+        return wordnet.ADJ
+    elif tag.startswith('V'):
+        return wordnet.VERB
+    elif tag.startswith('N'):
+        return wordnet.NOUN
+    elif tag.startswith('R'):
+        return wordnet.ADV
+    return wordnet.NOUN  # default fallback
+
+# Lemmatize text with POS tags for better accuracy
+def lemmatize_with_pos(text):
+    tokens = word_tokenize(str(text).lower())
+    tagged = pos_tag(tokens)
+    return " ".join([
+        lemmatizer.lemmatize(word, get_wordnet_pos(pos))
+        for word, pos in tagged if word.isalnum()
+    ])
+
+
+# === LOAD AND PROCESS ARTICLES ===
+
+# Load article metadata and lemmatize content
+news = pd.read_csv("news_articles_metadata.csv")
+news["content"] = news["content"].fillna("").astype(str).apply(lemmatize_with_pos)
+
+# Use content as input to TF-IDF
+documents = news["content"]
+
+
+# === TF-IDF + SIMILARITY ===
+
+# Create TF-IDF vectors (removing English stopwords)
+vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_matrix = vectorizer.fit_transform(documents)
+
+# Compute cosine similarity between documents
+cos_sim_matrix = cosine_similarity(tfidf_matrix)
+
+# Store similarity matrix in a DataFrame using filenames as labels
+sim_news = pd.DataFrame(cos_sim_matrix, index=news["filename"], columns=news["filename"])
+
+
+# === MOST SIMILAR DOCUMENTS TO A FILE (TEST) ===
+
+doc_name = "121.txt"
+if doc_name in sim_news:
+    most_similar = sim_news[doc_name].sort_values(ascending=False)[1:6]
+    print(f"Top 5 most similar articles to {doc_name}:\n{most_similar}")
+else:
+    print(f"Document {doc_name} not found in dataset.")
+
+
+# === HEATMAP: FULL DOCUMENT SIMILARITY ===
+
+plt.figure(figsize=(12, 10))
+sns.heatmap(sim_news, cmap='viridis', xticklabels=True, yticklabels=True)
+plt.title("TF-IDF Document Similarity Heatmap")
+plt.xlabel("Documents")
+plt.ylabel("Documents")
+plt.tight_layout()
+plt.show()
+
+
+# === FILTER HIGH-SIMILARITY PAIRS ONLY ===
+
+# Set self-similarity on diagonal to 0 (exclude perfect self-matches)
+np.fill_diagonal(sim_news.values, 0)
+
+# Keep only documents that are highly similar (≥ 0.8) to any other
+strong_docs = sim_news[(sim_news >= 0.8)].any(axis=1)
+
+# Filter similarity matrix to keep only those documents
+filtered_sim_news = sim_news.loc[strong_docs, strong_docs]
+
+# Mask values below 0.7 (to exclude weak similarity)
+masked_sim_news = filtered_sim_news.where(filtered_sim_news >= 0.7, np.nan)
+
+
+# === FLATTEN SIMILARITY MATRIX INTO DOCUMENT PAIRS ===
+
+# Remove axis labels for clean output
+filtered_sim_news.index.name = None
+filtered_sim_news.columns.name = None
+
+# Convert matrix to long-form DataFrame: each row is a (doc1, doc2, similarity) triple
+similar_pairs = (
+    masked_sim_news.stack()
+    .reset_index()
+    .rename(columns={"level_0": "doc1", "level_1": "doc2", 0: "similarity"})
+)
+
+# Remove self-pairs (i.e., same document compared with itself)
+similar_pairs = similar_pairs[similar_pairs["doc1"] != similar_pairs["doc2"]]
+
+# Remove duplicate unordered pairs like (A, B) and (B, A)
+similar_pairs["pair_key"] = similar_pairs.apply(
+    lambda row: tuple(sorted([row["doc1"], row["doc2"]])), axis=1
+)
+similar_pairs = similar_pairs.drop_duplicates(subset="pair_key").drop(columns="pair_key")
+
+# Sort by similarity in descending order
+similar_pairs = similar_pairs.sort_values(by="similarity", ascending=False)
+
+# Save the resulting high-similarity document pairs to file
+similar_pairs.to_csv("high_similarity_pairs.csv", index=False)
+
+
+# === MERGE METADATA TO DOCUMENT PAIRS ===
+
+# Select relevant metadata columns
+meta = news[["filename", "source", "date"]]
+
+# Load high-similarity pairs (TF-IDF ≥ 0.7)
+pairs = pd.read_csv("high_similarity_pairs.csv")
+
+# Drop rows with missing metadata (filename, source or date)
+meta = meta.dropna(subset=["filename", "source", "date"])
+meta["date"] = pd.to_datetime(meta["date"], errors="coerce")  # Convert to datetime
+
+# Merge metadata for both documents in each pair
+merged = pairs.merge(meta, left_on="doc1", right_on="filename", how="left").rename(
+    columns={"source": "source1", "date": "date1"}
+)
+merged = merged.merge(meta, left_on="doc2", right_on="filename", how="left").rename(
+    columns={"source": "source2", "date": "date2"}
+)
+
+# Drop any pairs where one of the dates is missing (to ensure logic is sound)
+merged = merged.dropna(subset=["date1", "date2"])
+
+
+# === SOURCE-LEVEL TF-IDF SIMILARITY ===
+
+# Combine all articles per source into one string
+source_texts = news.groupby("source")["content"].apply(lambda texts: " ".join(texts.dropna().astype(str)))
+
+# Lemmatize source-level texts for consistency
+source_texts = source_texts.apply(lemmatize_with_pos)
+
+# Vectorize using TF-IDF
+source_vectorizer = TfidfVectorizer(stop_words='english')
+source_tfidf_vectors = source_vectorizer.fit_transform(source_texts)
+
+# Compute cosine similarity between sources
+source_similarity = pd.DataFrame(
+    cosine_similarity(source_tfidf_vectors),
+    index=source_texts.index,
+    columns=source_texts.index
+)
+
+# Only annotate values above threshold (e.g. 0.7)
+similarity_threshold = 0.7
+annotated_cells = source_similarity.map(lambda val: f"{val:.2f}" if val >= similarity_threshold else "")
+
+# Plot heatmap of source similarity
+plt.figure(figsize=(12, 10))
+heatmap = sns.heatmap(
+    source_similarity,
+    cmap="coolwarm",
+    annot=annotated_cells,
+    fmt="",
+    xticklabels=True,
+    yticklabels=True
+)
+heatmap.set_xticklabels(heatmap.get_xticklabels(), rotation=45, ha="right")
+heatmap.set_yticklabels(heatmap.get_yticklabels(), rotation=0)
+plt.title(f"News Source Similarity (TF-IDF, Threshold ≥ {similarity_threshold})", fontsize=16)
+plt.tight_layout()
+plt.show()
+
+
+# === PUBLICATION ORDER ANALYSIS BETWEEN SOURCES ===
+
+# Extract metadata with valid source and date
+article_metadata = news[["filename", "source", "date"]].dropna()
+article_metadata["source"] = article_metadata["source"].str.lower().str.strip()
+article_metadata["date"] = pd.to_datetime(article_metadata["date"], errors="coerce")
+
+# Merge metadata into each document pair
+merged_pairs = similar_pairs.merge(article_metadata, left_on="doc1", right_on="filename", how="left").rename(
+    columns={"source": "source1", "date": "date1"}
+)
+merged_pairs = merged_pairs.merge(article_metadata, left_on="doc2", right_on="filename", how="left").rename(
+    columns={"source": "source2", "date": "date2"}
+)
+
+# Filter out invalid or redundant rows
+merged_pairs = merged_pairs.dropna(subset=["date1", "date2"])
+merged_pairs = merged_pairs[merged_pairs["source1"] != merged_pairs["source2"]]
+merged_pairs = merged_pairs[merged_pairs["date1"] != merged_pairs["date2"]]
+merged_pairs = merged_pairs[merged_pairs["similarity"] >= 0.7]
+
+# Normalize pair labels so A → B and B → A have a canonical order
+merged_pairs["canonical_pair"] = merged_pairs.apply(
+    lambda row: tuple(sorted([row["source1"], row["source2"]])), axis=1
+)
+merged_pairs["pair_label"] = merged_pairs["canonical_pair"].apply(lambda pair: f"{pair[0]} → {pair[1]}")
+
+# Identify publication direction: who published earlier
+first_by_source1 = merged_pairs[merged_pairs["date1"] < merged_pairs["date2"]].copy()
+first_by_source1["direction"] = "A → B"
+first_by_source1["publisher"] = first_by_source1["source1"]
+
+first_by_source2 = merged_pairs[merged_pairs["date2"] < merged_pairs["date1"]].copy()
+first_by_source2["direction"] = "B → A"
+first_by_source2["publisher"] = first_by_source2["source2"]
+
+# Combine and count occurrences of each direction
+directional_publications = pd.concat([first_by_source1, first_by_source2], ignore_index=True)
+directional_publications["count"] = 1
+
+# Aggregate count of each publication direction per source-pair
+direction_counts = (
+    directional_publications.groupby(["pair_label", "direction"], as_index=False)
+    .agg(count=("count", "sum"))
+)
+
+# Keep only source pairs with at least 2 observations
+direction_counts = direction_counts[direction_counts["count"] >= 2]
+
+# Sort source pairs by total volume
+sorted_pairs = (
+    direction_counts.groupby("pair_label")["count"]
+    .sum()
+    .sort_values(ascending=False)
+    .index
+)
+
+# Plot directional publication counts
+plt.figure(figsize=(14, 10))
+sns.barplot(
+    data=direction_counts,
+    x="count",
+    y="pair_label",
+    hue="direction",
+    order=sorted_pairs,
+    hue_order=["A → B", "B → A"],
+    dodge=True,
+    palette="Set2"
+)
+plt.title("Who Published First in Source Pairs with High-Similarity Documents (≥ 0.7)", fontsize=14)
+plt.xlabel("Number of Times Published First")
+plt.ylabel("Source Pair")
+plt.grid(axis="x", linestyle="--", alpha=0.5)
+plt.legend(title="Direction")
+plt.tight_layout()
+plt.show()
+
+
+# === WORD COUNT DIFFERENCES BETWEEN SOURCES ===
+
+# Prepare metadata: source and word count per article
+wordcount_metadata = news[["filename", "source", "content"]].dropna()
+wordcount_metadata["source"] = wordcount_metadata["source"].str.strip().str.lower()
+wordcount_metadata["word_count"] = wordcount_metadata["content"].apply(lambda text: len(str(text).split()))
+
+# Merge word count into both documents of each high-similarity pair
+pair_wordcounts = similar_pairs.merge(
+    wordcount_metadata[["filename", "source", "word_count"]],
+    left_on="doc1", right_on="filename", how="left"
+).rename(columns={"source": "source1", "word_count": "wc1"})
+
+pair_wordcounts = pair_wordcounts.merge(
+    wordcount_metadata[["filename", "source", "word_count"]],
+    left_on="doc2", right_on="filename", how="left"
+).rename(columns={"source": "source2", "word_count": "wc2"})
+
+# Filter out invalid or weak similarity rows
+pair_wordcounts = pair_wordcounts[pair_wordcounts["similarity"] >= 0.7]
+pair_wordcounts = pair_wordcounts.dropna(subset=["source1", "source2", "wc1", "wc2"])
+
+# Define canonical source pairs (same logic A/B as before)
+pair_wordcounts["canonical_pair"] = pair_wordcounts.apply(
+    lambda row: tuple(sorted([row["source1"], row["source2"]])), axis=1
+)
+pair_wordcounts["pair_label"] = pair_wordcounts["canonical_pair"].apply(lambda pair: f"{pair[0]} vs {pair[1]}")
+
+# Assign A/B roles based on sorted canonical order
+pair_wordcounts["role1"] = pair_wordcounts.apply(
+    lambda row: "A" if row["source1"] == row["canonical_pair"][0] else "B", axis=1
+)
+pair_wordcounts["role2"] = pair_wordcounts.apply(
+    lambda row: "A" if row["source2"] == row["canonical_pair"][0] else "B", axis=1
+)
+
+# Reshape data to long format for comparison
+longform = pd.DataFrame({
+    "pair_label": pair_wordcounts["pair_label"].tolist() * 2,
+    "role": pair_wordcounts["role1"].tolist() + pair_wordcounts["role2"].tolist(),
+    "source": pair_wordcounts["source1"].tolist() + pair_wordcounts["source2"].tolist(),
+    "word_count": pair_wordcounts["wc1"].tolist() + pair_wordcounts["wc2"].tolist()
+})
+
+# Compute average word count per role and pair
+average_wordcounts = longform.groupby(["pair_label", "role"], as_index=False)["word_count"].mean()
+
+# Pivot to compare A vs B within each pair
+wordcount_pivot = average_wordcounts.pivot(index="pair_label", columns="role", values="word_count").dropna()
+
+# Compute relative difference between A and B
+wordcount_pivot["relative_diff"] = abs(wordcount_pivot["A"] - wordcount_pivot["B"]) / (
+    (wordcount_pivot["A"] + wordcount_pivot["B"]) / 2
+)
+
+# Keep only pairs where the difference exceeds 20%
+significant_pairs = wordcount_pivot[wordcount_pivot["relative_diff"] > 0.20].index
+
+# Filter average data to only include those significant pairs
+average_wordcounts = average_wordcounts[average_wordcounts["pair_label"].isin(significant_pairs)]
+
+# Ensure both A and B are present per pair
+role_counts = average_wordcounts["pair_label"].value_counts()
+valid_pairs = role_counts[role_counts == 2].index
+average_wordcounts = average_wordcounts[average_wordcounts["pair_label"].isin(valid_pairs)]
+
+# Save result
+average_wordcounts.to_csv("source_wordcount_comparison.csv", index=False)
+
+# Plot average word counts for each source pair
+plt.figure(figsize=(14, max(6, len(average_wordcounts['pair_label'].unique()) * 0.5)))
+sns.barplot(
+    data=average_wordcounts,
+    x="word_count",
+    y="pair_label",
+    hue="role",
+    dodge=True,
+    palette=["#66c2a5", "#fc8d62"],
+    linewidth=1.5
+)
+plt.title("Average Word Count per Source in High-Similarity Article Pairs (≥ 0.7)", fontsize=14)
+plt.xlabel("Average Word Count")
+plt.ylabel("Source Pair")
+plt.grid(axis="x", linestyle="--", alpha=0.6)
+plt.legend(title="Role")
+plt.tight_layout()
+plt.show()
+
+
+# === 3D PLOTTING OF SOURCE BEHAVIOR ===
+
+# Prepare metadata with clean columns
+metadata = news.dropna(subset=["filename", "source", "date", "content"]).copy()
+metadata["source"] = metadata["source"].str.strip().str.lower()
+metadata["date"] = pd.to_datetime(metadata["date"], errors="coerce")
+metadata["word_count"] = metadata["content"].apply(lambda text: len(str(text).split()))
+
+# Merge metadata into similarity pairs
+pair_stats = similar_pairs.merge(
+    metadata[["filename", "source", "date", "word_count"]],
+    left_on="doc1", right_on="filename", how="left"
+).rename(columns={"source": "source1", "date": "date1", "word_count": "wc1"})
+
+pair_stats = pair_stats.merge(
+    metadata[["filename", "source", "date", "word_count"]],
+    left_on="doc2", right_on="filename", how="left"
+).rename(columns={"source": "source2", "date": "date2", "word_count": "wc2"})
+
+# Remove invalid rows
+pair_stats = pair_stats.dropna(subset=["date1", "date2", "source1", "source2", "wc1", "wc2", "similarity"])
+pair_stats = pair_stats[pair_stats["source1"] != pair_stats["source2"]]
+
+# Create TF-IDF matrix per source
+combined_per_source = metadata.groupby("source")["content"].apply(lambda texts: " ".join(texts))
+vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_per_source = vectorizer.fit_transform(combined_per_source)
+similarity_per_source = pd.DataFrame(
+    cosine_similarity(tfidf_per_source),
+    index=combined_per_source.index,
+    columns=combined_per_source.index
+)
+
+# Fill diagonal with NaN to ignore self-similarity in mean calc
+np.fill_diagonal(similarity_per_source.values, np.nan)
+avg_similarity = similarity_per_source.mean(axis=1).to_dict()
+
+# === Compute 3D coordinates for each source ===
+
+sources = pd.concat([pair_stats["source1"], pair_stats["source2"]]).unique()
+scatter_data = []
+
+for source in sources:
+    relevant_rows = pair_stats[(pair_stats["source1"] == source) | (pair_stats["source2"] == source)]
+    if relevant_rows.empty:
+        continue
+
+    pair_count = len(relevant_rows)
+
+    # --- X: relative word count difference ---
+    diffs = []
+    for _, row in relevant_rows.iterrows():
+        wc_self = row["wc1"] if row["source1"] == source else row["wc2"]
+        wc_other = row["wc2"] if row["source1"] == source else row["wc1"]
+        if wc_self + wc_other > 0:
+            diff = (wc_self - wc_other) / ((wc_self + wc_other) / 2)
+            diffs.append(diff)
+    x_rel_diff = np.mean(diffs) if diffs else 0
+
+    # --- Y: publication order ratio ---
+    first_or_equal_count = (
+        ((relevant_rows["source1"] == source) & (relevant_rows["date1"] <= relevant_rows["date2"])).sum() +
+        ((relevant_rows["source2"] == source) & (relevant_rows["date2"] <= relevant_rows["date1"])).sum()
+    )
+    y_first_ratio = first_or_equal_count / pair_count
+
+    # --- Z: average similarity to other sources ---
+    z_sim = avg_similarity.get(source, np.nan)
+    if pd.isna(z_sim):
+        continue
+
+    scatter_data.append({
+        "source": source,
+        "x_longer": x_rel_diff,
+        "y_first_or_equal": y_first_ratio,
+        "z_avg_similarity": z_sim,
+        "pair_count": pair_count
+    })
+
+scatter_df = pd.DataFrame(scatter_data)
+
+# Add dummy points for missing sources
+existing_sources = scatter_df["source"].tolist()
+all_sources = metadata["source"].dropna().unique().tolist()
+missing = sorted(set(all_sources) - set(existing_sources))
+
+dummy_data = pd.DataFrame({
+    "source": missing,
+    "x_longer": np.linspace(0, -0.1, len(missing)),
+    "y_first_or_equal": 0,
+    "z_avg_similarity": 0,
+    "pair_count": 0
+})
+
+plot_sources = pd.concat([scatter_df, dummy_data], ignore_index=True)
+
+
+# === Plot in 3D ===
+fig = px.scatter_3d(
+    plot_sources,
+    x="x_longer",
+    y="y_first_or_equal",
+    z="z_avg_similarity",
+    size="pair_count",
+    color="pair_count",
+    hover_name="source",
+    color_continuous_scale="viridis",
+    title="Source Behavior in High-Similarity Article Pairs",
+    labels={
+        "x_longer": "Longer Article Ratio",
+        "y_first_or_equal": "Published First/Equal Ratio",
+        "z_avg_similarity": "Avg Source Similarity",
+        "pair_count": "Num Pairs"
+    }
+)
+
+fig.update_traces(marker=dict(opacity=0.85, line=dict(width=0)))
+fig.update_traces(
+    text=plot_sources["source"],
+    textposition="top center",
+    textfont=dict(size=12),
+    selector=dict(type='scatter3d'),
+    mode="markers+text"
+)
+
+# Name toggle
+fig.update_layout(
+    updatemenus=[{
+        "buttons": [
+            {
+                "label": "Show Names",
+                "method": "restyle",
+                "args": [{"text": [plot_sources["source"]], "mode": ["markers+text"]}]
+            },
+            {
+                "label": "Hide Names",
+                "method": "restyle",
+                "args": [{"text": [None], "mode": ["markers"]}]
+            }
+        ],
+        "direction": "down",
+        "showactive": True,
+        "x": 0.05,
+        "xanchor": "left",
+        "y": 1.05,
+        "yanchor": "top"
+    }]
+)
+
+pio.renderers.default = 'browser'
+fig.show()
+
+
+# === QUOTE DETECTION BETWEEN SOURCES ===
+
+# Clean source list
+all_sources = news["source"].dropna().str.strip().str.lower().unique().tolist()
+
+# Load stopwords for filtering
+stop_words = set(stopwords.words("english"))
+
+# Helper: remove stopwords
+def remove_stopwords(text):
+    tokens = word_tokenize(str(text).lower())
+    return " ".join([w for w in tokens if w.isalnum() and w not in stop_words])
+
+# Prepare new version of content without stopwords
+news_nostop = news.copy()
+news_nostop["source"] = news_nostop["source"].str.strip().str.lower()
+news_nostop["content"] = news_nostop["content"].str.lower()  # keep raw form (lemmatization already done)
+
+# Verbs indicating quoting
+quote_verbs = [
+    "observe", "describe", "discuss", "report", "outline", "remark", "state", "say", "says", "said",
+    "saying", "quote", "mention", "articulate", "write", "writes", "wrote", "written", "relate",
+    "convey", "recognize", "clarify", "acknowledge", "concede", "accept", "refute", "uncover",
+    "admit", "demonstrate", "highlight", "illuminate", "support", "conclude", "elucidate", "reveal",
+    "verify", "argue", "reason", "maintain", "contend", "hypothesize", "propose", "theorize",
+    "feel", "felt", "consider", "assert", "dispute", "advocate", "opine", "think", "thought",
+    "imply", "posit", "show", "showed", "shown", "illustrate", "point", "prove", "proves",
+    "proved", "proven", "find", "found", "explain", "agree", "confirm", "identify", "evidence",
+    "attest", "believe", "claim", "justify", "insist", "assume", "allege", "deny", "speculate",
+    "disregard", "suppose", "conjecture", "surmise", "note", "suggest", "challenge", "critique",
+    "emphasize", "emphasise", "declare", "indicate", "comment", "uphold"
+]
+
+# Helper: check if any verb in quote_verbs is near the given index
+def find_nearby_verbs(tokens, idx, window=5):
+    start = max(0, idx - window)
+    end = min(len(tokens), idx + window + 1)
+    context = tokens[start:end]
+    tags = pos_tag(context)
+    return any(tag.startswith("VB") and word.lower() in quote_verbs for word, tag in tags)
+
+# Helper: compare similarity between n-gram and a source name
+def is_similar_phrase(phrase_tokens, target_source, threshold=0.8):
+    phrase = " ".join(phrase_tokens).lower()
+    return SequenceMatcher(None, phrase, target_source).ratio() >= threshold
+
+
+# === Run quote detection ===
+citations = []
+
+for _, row in news_nostop.iterrows():
+    text = row["content"]
+    quoting_source = row["source"]
+    filename = row["filename"]
+
+    if not quoting_source or quoting_source not in all_sources:
+        continue  # skip if quoting source is not valid
+
+    for sentence in sent_tokenize(text):
+        if quoting_source in sentence:
+            continue  # skip self-citation
+
+        tokens = word_tokenize(sentence)
+        lowered_tokens = [t.lower() for t in tokens]
+
+        for n in range(1, 6):  # test 1–5-grams
+            for i in range(len(lowered_tokens) - n + 1):
+                ngram = lowered_tokens[i:i+n]
+                for possible_source in all_sources:
+                    if possible_source == quoting_source:
+                        continue
+                    if is_similar_phrase(ngram, possible_source):
+                        if find_nearby_verbs(tokens, i, window=5):
+                            citations.append({
+                                "source": possible_source,
+                                "quoted_by": quoting_source,
+                                "filename": filename
+                            })
+                            break
+                else:
+                    continue
+                break  # found match → move to next sentence
+
+
+# === Summarize quote results ===
+df_citations = pd.DataFrame(citations)
+
+if not df_citations.empty:
+    grouped = (
+        df_citations.groupby(["source", "quoted_by"])
+        .size()
+        .reset_index(name="count")
+    )
+
+    summary = (
+        grouped.groupby("source")
+        .agg(
+            quoted_by=("quoted_by", list),
+            quote_counts=("count", list)
+        )
+        .reset_index()
+    )
+
+    summary.to_csv("source_quote_summary.csv", index=False)
+    print(summary.head())
+else:
+    print("No quotations detected.")

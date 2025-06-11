@@ -1,0 +1,168 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import normalize
+from sklearn.cluster import AgglomerativeClustering
+from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.spatial.distance import pdist
+import textwrap
+
+
+from bertopic import BERTopic
+import re
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+
+# Load topic distribution from BERTopic
+df = pd.read_csv("bertopic_topics_per_source.csv")
+
+# Pivot to source x topic matrix
+topic_matrix = df.pivot_table(index="source", columns="topic", values="article_count", fill_value=0)
+
+# Normalize rows: each source becomes a topic distribution
+topic_matrix_norm = pd.DataFrame(
+    normalize(topic_matrix, norm="l1", axis=1),
+    index=topic_matrix.index,
+    columns=topic_matrix.columns
+)
+
+
+# Pivot to topic matrix
+topic_matrix = df.pivot_table(index="source", columns="topic", values="article_count", fill_value=0)
+topic_matrix_norm = pd.DataFrame(
+    normalize(topic_matrix, norm="l1", axis=1),
+    index=topic_matrix.index,
+    columns=topic_matrix.columns
+)
+
+# Determine top N topics (you can adjust to top 8, 10, etc.)
+top_topics = df.groupby("topic")["article_count"].sum().sort_values(ascending=False).head(8).index.tolist()
+filtered_df = df[df["topic"].isin(top_topics)].copy()
+
+# Create topic label from 'topic_words' (keep full string)
+topic_labels = df.dropna(subset=["topic_words"]) \
+                 .drop_duplicates(subset=["topic"]) \
+                 .set_index("topic")["topic_words"]
+filtered_df["topic_label"] = filtered_df["topic"].map(topic_labels)
+
+#Compute total article count per source-topic
+source_counts = (
+    filtered_df.groupby(["topic", "source"])["article_count"]
+    .sum()
+    .reset_index()
+)
+
+# Compute % per topic
+topic_totals = source_counts.groupby("topic")["article_count"].sum()
+source_counts["percentage"] = source_counts.apply(
+    lambda row: 100 * row["article_count"] / topic_totals[row["topic"]], axis=1
+)
+
+# Add topic label and rank
+source_counts["topic_label"] = source_counts["topic"].map(topic_labels)
+source_counts["rank"] = source_counts.groupby("topic")["percentage"] \
+                                     .rank(method="first", ascending=False)
+
+# Wrap topic labels
+source_counts["wrapped_label"] = source_counts["topic_label"].fillna("unknown").apply(
+    lambda x: "\n".join(textwrap.wrap(str(x), width=40))
+)
+
+# Keep top N per topic (and filter small ones)
+N = 6  # change this to number of visible bars
+source_topN = (
+    source_counts.sort_values(["topic", "percentage"], ascending=[True, False])
+    .groupby("topic")
+    .head(N)
+)
+
+source_topN["source"] = source_topN.groupby("topic")["source"].transform(
+    lambda s: pd.Categorical(s, categories=s.tolist())
+)
+
+# Add topic label and rank (already done above, but in case needed again)
+source_topN["topic_label"] = source_topN["topic"].map(topic_labels)
+source_topN["rank"] = source_topN.groupby("topic")["percentage"] \
+                                 .rank(method="first", ascending=False)
+
+
+import textwrap
+
+sns.set_theme(style="whitegrid")
+g = sns.catplot(
+    data=source_topN.sort_values(["topic", "percentage"], ascending=[True, False]),
+    kind="bar",
+    x="percentage",
+    y="source",
+    col="wrapped_label",
+    col_wrap=2,
+    height=4.5,
+    aspect=1.6,
+    palette="viridis",
+    sharex=False
+)
+
+# Add labels to bars
+# Set larger title font
+g.set_titles("{col_name}", size=12)
+g.set_axis_labels("Share of Articles (%)", "Source")
+g.set_xticklabels(rotation=0)
+
+# Add percentage + rank labels on each bar
+for ax, (_, subdf) in zip(g.axes.flatten(), source_topN.groupby("wrapped_label")):
+    for container in ax.containers:
+        for bar, (_, row) in zip(container, subdf.iterrows()):
+            width = bar.get_width()
+            label = f"{int(row['rank'])}. {width:.1f}%"
+            ax.text(width + 0.5, bar.get_y() + bar.get_height() / 2,
+                    label, va='center', fontsize=9)
+
+# Adjust layout and title
+g.figure.subplots_adjust(top=0.92)
+g.figure.suptitle("Top 6 Sources per Topic with Rank and % Share", fontsize=16)
+plt.tight_layout()
+plt.show()
+
+#Method 2
+
+unique_topics = source_topN["wrapped_label"].unique()
+half = len(unique_topics) // 2
+
+# Split into two groups
+first_half = source_topN[source_topN["wrapped_label"].isin(unique_topics[:half])]
+second_half = source_topN[source_topN["wrapped_label"].isin(unique_topics[half:])]
+
+# Plot function
+def plot_faceted(data, title_suffix):
+    g = sns.catplot(
+        data=data.sort_values(["topic", "percentage"], ascending=[True, False]),
+        kind="bar",
+        x="percentage",
+        y="source",
+        col="wrapped_label",
+        col_wrap=2,
+        height=4.5,
+        aspect=1.6,
+        palette="viridis",
+        sharex=False
+    )
+
+    g.set_titles("{col_name}", size=13)
+    g.set_axis_labels("Share of Articles (%)", "Source")
+    g.set_xticklabels(rotation=0)
+    g.figure.subplots_adjust(top=0.90, hspace=0.5)
+
+    for ax, (_, subdf) in zip(g.axes.flatten(), data.groupby("wrapped_label")):
+        for container in ax.containers:
+            for bar, (_, row) in zip(container, subdf.iterrows()):
+                width = bar.get_width()
+                label = f"{width:.1f}%"  # or use f"#{int(row['rank'])}\n{width:.1f}%" if you prefer
+                ax.text(width + 0.5, bar.get_y() + bar.get_height() / 2,
+                        label, va='center', fontsize=9)
+
+    g.figure.suptitle(f"Top Sources per Topic (Part {title_suffix})", fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+# Run both
+plot_faceted(first_half, "1")
+plot_faceted(second_half, "2")
